@@ -394,6 +394,7 @@ let rptMonth=new Date(); rptMonth.setDate(1);
 let selColor=COLORS[0];
 let histFilter='all';
 let _idb=null;
+let _reportScheduled=false;
 
 // ── INDEXED DB (backup) ───────────────────────────────
 function openIDB(){
@@ -450,23 +451,27 @@ async function load(){
   setDefaults();
 }
 function fixD(){
-  if(!D.accounts)D.accounts=[];
-  if(!D.expenses)D.expenses=[];
+  if(!Array.isArray(D.accounts))D.accounts=[];
+  if(!Array.isArray(D.expenses))D.expenses=[];
   if(!D.currency)D.currency='₹';
   D.expenses=D.expenses.filter(e=>e&&typeof e.amount==='number'&&!isNaN(e.amount)&&e.amount>0&&typeof e.date==='string'&&e.date.length>=8);
+  D.accounts=D.accounts.filter(a=>a&&typeof a.id==='string'&&/^[\w-]+$/.test(a.id)&&typeof a.name==='string');
+  D.accounts.forEach(a=>{if(!a.type||!AT[a.type])a.type='other';if(!a.color||typeof a.color!=='string')a.color='#8E8E93';});
   if(!D.nextId)D.nextId=(D.expenses.reduce((m,e)=>Math.max(m,e.id||0),0)||0)+1;
   if(!D.lastReportKey)D.lastReportKey=null;
   if(!D.lastAutoExportKey)D.lastAutoExportKey=null;
 }
 function setDefaults(){
-  D.accounts=[
+  D={accounts:[
     {id:'a1',name:'HDFC CC 5656', type:'credit_card',color:'#007AFF'},
     {id:'a2',name:'SBI Debit 1234',type:'debit_card', color:'#34C759'},
     {id:'a3',name:'Cash',          type:'cash',       color:'#FF9500'},
     {id:'a4',name:'GPay / PhonePe',type:'upi',        color:'#AF52DE'},
-  ];
+  ],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null};
   save();
 }
+
+function localDateStr(d){const dt=d||new Date();return`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;}
 
 // ── HELPERS ───────────────────────────────────────────
 const cur=()=>D.currency||'₹';
@@ -479,8 +484,8 @@ function fmtDate(s){
 function fmtGrp(s){
   try{
     const d=new Date((s||'')+'T00:00:00'),t=new Date(),y=new Date(t);y.setDate(t.getDate()-1);
-    if(s===t.toISOString().split('T')[0])return'Today';
-    if(s===y.toISOString().split('T')[0])return'Yesterday';
+    if(s===localDateStr(t))return'Today';
+    if(s===localDateStr(y))return'Yesterday';
     return d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
   }catch(e){return s||'';}
 }
@@ -591,14 +596,14 @@ function txnHtml(e,del=true){
 // ── ADD EXPENSE ───────────────────────────────────────
 function resetAdd(){
   document.getElementById('add-amount').value='';
-  document.getElementById('add-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('add-date').value=localDateStr();
   document.getElementById('add-note').value='';
   document.getElementById('add-sym').textContent=cur();
 }
 function populateDDs(){
   document.getElementById('add-acct').innerHTML=D.accounts.length===0
     ?'<option value="">Add an account in Settings first</option>'
-    :D.accounts.map(a=>`<option value="${a.id}">${(AT[a.type]||AT.other).emoji} ${a.name}</option>`).join('');
+    :D.accounts.map(a=>`<option value="${a.id}">${(AT[a.type]||AT.other).emoji} ${esc(a.name)}</option>`).join('');
   document.getElementById('add-cat').innerHTML=CATS.map(c=>`<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
   document.getElementById('add-sym').textContent=cur();
 }
@@ -649,9 +654,9 @@ function checkMonthEnd(){
   if(day===1){
     const pd=new Date(yr,mo-1,1),pyr=pd.getFullYear(),pmo=pd.getMonth();
     const key=`${pyr}-${pmo}`;
-    if(moExp(pyr,pmo).length>0&&D.lastReportKey!==key){
-      D.lastReportKey=key;save();
-      setTimeout(()=>openReport(pyr,pmo,true),800);
+    if(moExp(pyr,pmo).length>0&&D.lastReportKey!==key&&!_reportScheduled){
+      _reportScheduled=true;
+      setTimeout(()=>{D.lastReportKey=key;save();openReport(pyr,pmo,true);},800);
     }
   }
 }
@@ -777,7 +782,7 @@ function renderSettings(){
   if(ts){const d=new Date(ts);document.getElementById('last-saved-lbl').textContent=`Auto-saved · Last: ${d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}`;}
 }
 function saveCurrency(){D.currency=document.getElementById('cur-sel').value;save();document.getElementById('add-sym').textContent=cur();renderHome();toast('✅ Currency updated');}
-function clearAll(){D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null};setDefaults();renderSettings();renderHome();toast('🗑️ Cleared');}
+function clearAll(){D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null};save();histFilter='all';populateDDs();renderSettings();renderHome();toast('🗑️ All data cleared');}
 
 // ── ACCOUNTS ─────────────────────────────────────────
 function openAddAcct(){
@@ -799,7 +804,7 @@ function confirmDeleteAcct(id){
   const a=D.accounts.find(x=>x.id===id);if(!a)return;
   const n=D.expenses.filter(e=>e.accountId===id).length;
   confirmAction('Delete Account',`Delete "${a.name}"? Its ${n} transaction(s) will remain as "Unknown Account".`,()=>{
-    D.accounts=D.accounts.filter(x=>x.id!==id);save();renderSettings();populateDDs();toast('🗑️ Account deleted');
+    D.accounts=D.accounts.filter(x=>x.id!==id);save();if(histFilter===id)histFilter='all';renderSettings();populateDDs();toast('🗑️ Account deleted');
   });
 }
 
@@ -807,7 +812,7 @@ function confirmDeleteAcct(id){
 function exportBackup(){
   const b=new Blob([JSON.stringify(D,null,2)],{type:'application/json'});
   const u=URL.createObjectURL(b),a=document.createElement('a');
-  a.href=u;a.download=`SpendSmart_backup_${new Date().toISOString().split('T')[0]}.json`;a.click();URL.revokeObjectURL(u);
+  a.href=u;a.download=`SpendSmart_backup_${localDateStr()}.json`;a.click();URL.revokeObjectURL(u);
   toast('📦 Backup saved');
 }
 function importBackup(event){
@@ -820,7 +825,7 @@ function importBackup(event){
       const prev=JSON.stringify(D);
       D=imp;
       try{fixD();}catch(fe){D=JSON.parse(prev);throw fe;}
-      save();renderHome();renderSettings();populateDDs();toast(`✅ Imported: ${D.expenses.length} expenses`);
+      histFilter='all';save();renderHome();renderSettings();populateDDs();toast(`✅ Imported: ${D.expenses.length} expenses`);
     }catch(e){toast('❌ Invalid backup file');}
   };
   r.readAsText(file);event.target.value='';
@@ -829,10 +834,10 @@ function exportCSV(yr,mo){
   const exps=moExp(yr,mo);
   const mName=new Date(yr,mo).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
   const rows=[['Date','Account','Category','Amount','Comment'],
-    ...exps.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(e=>[e.date,getA(e.accountId)?.name||'Unknown',getC(e.category).name,e.amount,(e.comment||'').replace(/[\r\n]+/g,' ')])];
+    ...exps.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(e=>[e.date,(getA(e.accountId)?.name||'Unknown').replace(/[\r\n]+/g,' '),getC(e.category).name,e.amount,(e.comment||'').replace(/[\r\n]+/g,' ')])];
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const b=new Blob([csv],{type:'text/csv;charset=utf-8;'}),u=URL.createObjectURL(b),a=document.createElement('a');
-  a.href=u;a.download=`SpendSmart_${mName.replace(' ','_')}.csv`;a.click();URL.revokeObjectURL(u);
+  a.href=u;a.download=`SpendSmart_${mName.replace(/\s+/g,'_')}.csv`;a.click();URL.revokeObjectURL(u);
   toast('📤 CSV exported');
 }
 
