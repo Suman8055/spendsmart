@@ -203,7 +203,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 
   <!-- HEADER -->
   <div id="hdr">
-    <h1>💰 SpendSmart</h1>
+    <h1>💰 SpendSmart <span id="ver-lbl" style="font-size:11px;font-weight:400;color:var(--sub);vertical-align:middle"></span></h1>
     <div style="display:flex;align-items:center;gap:8px">
       <span id="save-dot"></span>
       <span id="save-time" style="font-size:11px;color:var(--sub)"></span>
@@ -363,6 +363,10 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 <div id="toast"></div>
 
 <script>
+// ── VERSION ───────────────────────────────────────────
+const APP_VERSION='v3.1';
+document.getElementById('ver-lbl').textContent=APP_VERSION;
+
 // ── CONSTANTS ─────────────────────────────────────────
 const COLORS=['#007AFF','#5856D6','#AF52DE','#FF2D55','#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#32ADE6'];
 const CATS=[
