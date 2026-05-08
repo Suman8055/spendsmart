@@ -1,4 +1,4 @@
-const CACHE = 'spendsmart-v2';
+const CACHE = 'spendsmart-v3';
 const FILES = ['/spendsmart/', '/spendsmart/index.html', '/spendsmart/manifest.json', '/spendsmart/icon.png'];
 
 self.addEventListener('install', e => {

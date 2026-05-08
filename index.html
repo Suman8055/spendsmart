@@ -180,6 +180,13 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 #me-banner .me-sub{font-size:12px;opacity:.85;margin-top:2px}
 #me-banner button{background:rgba(255,255,255,.25);border:none;color:#fff;padding:8px 14px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0}
 
+/* EXPORT BANNER */
+#ex-banner{background:linear-gradient(135deg,#34C759,#007AFF);color:#fff;border-radius:16px;padding:14px 16px;margin-bottom:14px;display:none;align-items:center;gap:10px}
+#ex-banner.show{display:flex}
+#ex-banner .me-text{flex:1}
+#ex-banner .ex-save{background:rgba(255,255,255,.25);border:none;color:#fff;padding:8px 14px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0}
+#ex-banner .ex-close{background:none;border:none;color:rgba(255,255,255,.8);font-size:20px;cursor:pointer;flex-shrink:0;line-height:1;padding:0 2px}
+
 /* TOAST */
 #toast{position:fixed;bottom:calc(var(--nav) + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#222;color:#fff;padding:10px 20px;border-radius:20px;font-size:14px;font-weight:500;opacity:0;transition:all .3s;z-index:9000;white-space:nowrap;pointer-events:none}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -415,10 +422,14 @@ async function idbLoad(){
 
 // ── AUTO-SAVE ─────────────────────────────────────────
 function save(){
-  localStorage.setItem('ss_v3',JSON.stringify(D));
-  localStorage.setItem('ss_ts',Date.now().toString());
+  try{
+    localStorage.setItem('ss_v3',JSON.stringify(D));
+    localStorage.setItem('ss_ts',Date.now().toString());
+    flashDot();
+  }catch(e){
+    toast('⚠️ Storage full — export a backup now!',5000);
+  }
   idbSave();
-  flashDot();
   updateSaveLbl();
 }
 function flashDot(){
@@ -521,8 +532,18 @@ function renderHome(){try{
     banner=`<div id="me-banner" class="show"><div class="me-text"><div class="me-title">📅 Month ending soon</div><div class="me-sub">${msg}</div></div><button onclick="openReport(${yr},${mo},false)">View Report</button></div>`;
   }
 
+  let exportBanner='';
+  if(day===1){
+    const pd=new Date(yr,mo-1,1),pyr2=pd.getFullYear(),pmo2=pd.getMonth();
+    const ekey=`${pyr2}-${pmo2}`;
+    if(moExp(pyr2,pmo2).length>0&&D.lastAutoExportKey!==ekey){
+      const pName=new Date(pyr2,pmo2).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+      exportBanner=`<div id="ex-banner" class="show"><div class="me-text"><div class="me-title">📥 ${pName} complete</div><div class="me-sub">Tap to save your monthly CSV</div></div><button class="ex-save" onclick="doMonthExport(${pyr2},${pmo2},'${ekey}')">Save CSV</button><button class="ex-close" onclick="dismissMonthExport('${ekey}')">✕</button></div>`;
+    }
+  }
+
   document.getElementById('tab-home').innerHTML=`
-    ${banner}
+    ${exportBanner}${banner}
     <div class="hero">
       <div class="lbl">📅 ${mName}</div>
       <div class="big">${fmt(total)}</div>
@@ -537,6 +558,17 @@ function renderHome(){try{
       ?`<div class="empty"><div class="e-ico">📝</div><div class="e-title">No expenses yet</div><div class="e-desc">Tap ＋ to add your first expense</div></div>`
       :recent.map(e=>txnHtml(e)).join('')}`;
 }catch(err){document.getElementById('tab-home').innerHTML=errHtml('home');}}
+
+// ── MONTH-END EXPORT BANNER ACTIONS ──────────────────
+function doMonthExport(yr,mo,key){
+  exportCSV(yr,mo);
+  D.lastAutoExportKey=key;save();
+  renderHome();
+}
+function dismissMonthExport(key){
+  D.lastAutoExportKey=key;save();
+  renderHome();
+}
 
 // ── TRANSACTION HTML ──────────────────────────────────
 function txnHtml(e,del=true){
@@ -576,7 +608,7 @@ function submitExpense(){
   const cat=document.getElementById('add-cat').value;
   const date=document.getElementById('add-date').value;
   const note=document.getElementById('add-note').value.trim();
-  if(!amt||amt<=0){toast('⚠️ Enter a valid amount');return;}
+  if(!amt||amt<=0||!isFinite(amt)){toast('⚠️ Enter a valid amount');return;}
   if(!acctId){toast('⚠️ Add an account in Settings first');return;}
   if(!date){toast('⚠️ Pick a date');return;}
   D.expenses.push({id:D.nextId++,accountId:acctId,amount:amt,category:cat,date,comment:note});
@@ -621,21 +653,7 @@ function checkMonthEnd(){
       D.lastReportKey=key;save();
       setTimeout(()=>openReport(pyr,pmo,true),800);
     }
-    if(moExp(pyr,pmo).length>0&&D.lastAutoExportKey!==key){
-      D.lastAutoExportKey=key;save();
-      setTimeout(()=>autoExportCSV(pyr,pmo),1400);
-    }
   }
-}
-function autoExportCSV(yr,mo){
-  const mName=new Date(yr,mo).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
-  const exps=moExp(yr,mo);if(!exps.length)return;
-  const rows=[['Date','Account','Category','Amount','Comment'],
-    ...exps.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(e=>[e.date,getA(e.accountId)?.name||'Unknown',getC(e.category).name,e.amount,e.comment||''])];
-  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const b=new Blob([csv],{type:'text/csv;charset=utf-8;'}),u=URL.createObjectURL(b),a=document.createElement('a');
-  a.href=u;a.download=`SpendSmart_${mName.replace(' ','_')}.csv`;a.click();URL.revokeObjectURL(u);
-  toast(`📥 ${mName} saved as CSV`);
 }
 
 // ── REPORT OVERLAY ────────────────────────────────────
@@ -682,7 +700,7 @@ function buildReport(yr,mo,isAuto){
 
   const insight=`In <strong>${mName}</strong>, you spent <strong>${fmt(total)}</strong> across <strong>${exps.length} transactions</strong>.
   Your biggest spending area was <strong>${topCat.cat.emoji} ${topCat.cat.name}</strong> (${((topCat.total/total)*100).toFixed(0)}% of total)
-  and most charges went through <strong>${topAcct.acct.name}</strong>.
+  and most charges went through <strong>${esc(topAcct.acct.name)}</strong>.
   Your daily average was <strong>${fmt(Math.round(avgDay))}</strong>.`;
 
   return`
@@ -706,7 +724,7 @@ function buildReport(yr,mo,isAuto){
     <div class="rpt-sec">💳 By Account</div>
     <div class="card">${acctData.map(({acct:a,total:t,count:n})=>`
       <div class="bar-item">
-        <div class="bar-top"><span class="bar-name">${(AT[a.type]||AT.other).emoji} ${a.name}</span><span class="bar-val">${fmt(t)} <span style="font-size:11px">(${n})</span></span></div>
+        <div class="bar-top"><span class="bar-name">${(AT[a.type]||AT.other).emoji} ${esc(a.name)}</span><span class="bar-val">${fmt(t)} <span style="font-size:11px">(${n})</span></span></div>
         <div class="bar-track"><div class="bar-fill" style="width:${(t/maxA*100).toFixed(1)}%;background:${a.color}"></div></div>
         <div class="bar-pct">${(t/total*100).toFixed(1)}% of total</div>
       </div>`).join('')}</div>
@@ -743,7 +761,7 @@ function renderRptTab(){try{
     </div>
     <button class="btn btn-blue" onclick="openReport(${yr},${mo},false)">📊 View Full Report</button>`;
 }catch(err){document.getElementById('rpt-tab-body').innerHTML=errHtml('report-tab');}}
-function changeRptMonth(d){rptMonth.setMonth(rptMonth.getMonth()+d);renderRptTab();}
+function changeRptMonth(d){rptMonth.setMonth(rptMonth.getMonth()+d);rptMonth.setDate(1);renderRptTab();}
 
 // ── SETTINGS ─────────────────────────────────────────
 function renderSettings(){
@@ -751,14 +769,14 @@ function renderSettings(){
     ?`<p style="color:var(--sub);font-size:14px;padding:10px 0">No accounts yet.</p>`
     :`<div>${D.accounts.map(a=>{const t=AT[a.type]||AT.other;return`<div class="acct-row">
       <div class="acct-dot" style="background:${a.color}"></div>
-      <div class="acct-info"><div class="acct-name">${t.emoji} ${a.name}</div><div class="acct-type">${t.label}</div></div>
+      <div class="acct-info"><div class="acct-name">${t.emoji} ${esc(a.name)}</div><div class="acct-type">${t.label}</div></div>
       <button class="del-btn" onclick="confirmDeleteAcct('${a.id}')">🗑️</button>
     </div>`;}).join('')}</div>`;
   const s=document.getElementById('cur-sel');if(s)s.value=cur();
   const ts=parseInt(localStorage.getItem('ss_ts')||'0');
   if(ts){const d=new Date(ts);document.getElementById('last-saved-lbl').textContent=`Auto-saved · Last: ${d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}`;}
 }
-function saveCurrency(){D.currency=document.getElementById('cur-sel').value;save();document.getElementById('add-sym').textContent=cur();toast('✅ Currency updated');}
+function saveCurrency(){D.currency=document.getElementById('cur-sel').value;save();document.getElementById('add-sym').textContent=cur();renderHome();toast('✅ Currency updated');}
 function clearAll(){D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null};setDefaults();renderSettings();renderHome();toast('🗑️ Cleared');}
 
 // ── ACCOUNTS ─────────────────────────────────────────
@@ -796,8 +814,14 @@ function importBackup(event){
   const file=event.target.files[0];if(!file)return;
   const r=new FileReader();
   r.onload=e=>{
-    try{const imp=JSON.parse(e.target.result);if(!imp.accounts||!imp.expenses)throw 0;D=imp;fixD();save();renderHome();renderSettings();populateDDs();toast(`✅ Imported: ${D.expenses.length} expenses`);}
-    catch(e){toast('❌ Invalid backup file');}
+    try{
+      const imp=JSON.parse(e.target.result);
+      if(!Array.isArray(imp.accounts)||!Array.isArray(imp.expenses))throw new Error('invalid');
+      const prev=JSON.stringify(D);
+      D=imp;
+      try{fixD();}catch(fe){D=JSON.parse(prev);throw fe;}
+      save();renderHome();renderSettings();populateDDs();toast(`✅ Imported: ${D.expenses.length} expenses`);
+    }catch(e){toast('❌ Invalid backup file');}
   };
   r.readAsText(file);event.target.value='';
 }
@@ -805,7 +829,7 @@ function exportCSV(yr,mo){
   const exps=moExp(yr,mo);
   const mName=new Date(yr,mo).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
   const rows=[['Date','Account','Category','Amount','Comment'],
-    ...exps.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(e=>[e.date,getA(e.accountId)?.name||'Unknown',getC(e.category).name,e.amount,e.comment||''])];
+    ...exps.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(e=>[e.date,getA(e.accountId)?.name||'Unknown',getC(e.category).name,e.amount,(e.comment||'').replace(/[\r\n]+/g,' ')])];
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const b=new Blob([csv],{type:'text/csv;charset=utf-8;'}),u=URL.createObjectURL(b),a=document.createElement('a');
   a.href=u;a.download=`SpendSmart_${mName.replace(' ','_')}.csv`;a.click();URL.revokeObjectURL(u);
