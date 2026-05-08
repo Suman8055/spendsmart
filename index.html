@@ -382,7 +382,7 @@ const AT={
 };
 
 // ── STATE ─────────────────────────────────────────────
-let D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null};
+let D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null};
 let rptMonth=new Date(); rptMonth.setDate(1);
 let selColor=COLORS[0];
 let histFilter='all';
@@ -444,6 +444,8 @@ function fixD(){
   if(!D.currency)D.currency='₹';
   D.expenses=D.expenses.filter(e=>e&&typeof e.amount==='number'&&!isNaN(e.amount)&&e.amount>0&&typeof e.date==='string'&&e.date.length>=8);
   if(!D.nextId)D.nextId=(D.expenses.reduce((m,e)=>Math.max(m,e.id||0),0)||0)+1;
+  if(!D.lastReportKey)D.lastReportKey=null;
+  if(!D.lastAutoExportKey)D.lastAutoExportKey=null;
 }
 function setDefaults(){
   D.accounts=[
@@ -619,7 +621,21 @@ function checkMonthEnd(){
       D.lastReportKey=key;save();
       setTimeout(()=>openReport(pyr,pmo,true),800);
     }
+    if(moExp(pyr,pmo).length>0&&D.lastAutoExportKey!==key){
+      D.lastAutoExportKey=key;save();
+      setTimeout(()=>autoExportCSV(pyr,pmo),1400);
+    }
   }
+}
+function autoExportCSV(yr,mo){
+  const mName=new Date(yr,mo).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+  const exps=moExp(yr,mo);if(!exps.length)return;
+  const rows=[['Date','Account','Category','Amount','Comment'],
+    ...exps.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(e=>[e.date,getA(e.accountId)?.name||'Unknown',getC(e.category).name,e.amount,e.comment||''])];
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const b=new Blob([csv],{type:'text/csv;charset=utf-8;'}),u=URL.createObjectURL(b),a=document.createElement('a');
+  a.href=u;a.download=`SpendSmart_${mName.replace(' ','_')}.csv`;a.click();URL.revokeObjectURL(u);
+  toast(`📥 ${mName} saved as CSV`);
 }
 
 // ── REPORT OVERLAY ────────────────────────────────────
@@ -743,7 +759,7 @@ function renderSettings(){
   if(ts){const d=new Date(ts);document.getElementById('last-saved-lbl').textContent=`Auto-saved · Last: ${d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}`;}
 }
 function saveCurrency(){D.currency=document.getElementById('cur-sel').value;save();document.getElementById('add-sym').textContent=cur();toast('✅ Currency updated');}
-function clearAll(){D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null};setDefaults();renderSettings();renderHome();toast('🗑️ Cleared');}
+function clearAll(){D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null};setDefaults();renderSettings();renderHome();toast('🗑️ Cleared');}
 
 // ── ACCOUNTS ─────────────────────────────────────────
 function openAddAcct(){
