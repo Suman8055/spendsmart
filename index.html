@@ -417,7 +417,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 
 <script>
 // ── VERSION ───────────────────────────────────────────
-const APP_VERSION='v3.3';
+const APP_VERSION='v3.4';
 document.getElementById('ver-lbl').textContent=APP_VERSION;
 
 // ── CONSTANTS ─────────────────────────────────────────
@@ -730,7 +730,8 @@ function setFilter(k){histFilter=k;renderHistory();}
 // ── DELETE ────────────────────────────────────────────
 function confirmDeleteExp(id){
   const e=D.expenses.find(x=>x.id===id);if(!e)return;
-  confirmAction('Delete Expense',`Delete ${fmt(e.amount)} expense${e.comment?' — "'+e.comment+'"':''}?`,()=>{
+  const eType=e.type==='income'?'income':'expense';
+  confirmAction(`Delete ${eType.charAt(0).toUpperCase()+eType.slice(1)}`,`Delete ${fmt(e.amount)} ${eType}${e.comment?' — "'+e.comment+'"':''}?`,()=>{
     D.expenses=D.expenses.filter(x=>x.id!==id);save();toast('🗑️ Deleted');
     const t=document.querySelector('.tab.on').id.replace('tab-','');
     if(t==='home')renderHome();else if(t==='history')renderHistory();
@@ -811,7 +812,7 @@ function buildReport(yr,mo,isAuto){
       <div class="rh-lbl">📅 ${mName} — Monthly Report</div>
       <div class="rh-total">${fmt(total)}</div>
       <div class="rh-sub">${exps.length} transactions &nbsp;·&nbsp; ${D.accounts.length} accounts</div>
-      ${prevTotal>0?`<div style="font-size:13px;opacity:.85;margin-top:6px">${delta>=0?'▲':'▼'} ${fmt(Math.abs(Math.round(delta)))} vs last month</div>`:''}
+      ${prevTotal>0?`<div style="font-size:13px;opacity:.85;margin-top:6px">${delta===0?'= Same as last month':(delta>0?'▲ ':'▼ ')+fmt(Math.abs(Math.round(delta)))+' vs last month'}</div>`:''}
       <div class="rh-stats">
         <div class="rh-stat"><div class="v">${fmt(Math.round(avgDay))}</div><div class="k">Daily Average</div></div>
         ${incOnly.length>0?`<div class="rh-stat"><div class="v">${fmt(Math.round(incTotal))}</div><div class="k">Income</div></div>`:`<div class="rh-stat"><div class="v">${fmt(Math.round(avgTxn))}</div><div class="k">Per Transaction</div></div>`}
@@ -934,8 +935,8 @@ function importBackup(event){
 function exportCSV(yr,mo){
   const exps=moExp(yr,mo);
   const mName=new Date(yr,mo).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
-  const rows=[['Date','Account','Category','Amount','Comment'],
-    ...exps.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(e=>[e.date,(getA(e.accountId)?.name||'Unknown').replace(/[\r\n]+/g,' '),getC(e.category).name,e.amount,(e.comment||'').replace(/[\r\n]+/g,' ')])];
+  const rows=[['Date','Type','Account','Category','Amount','Comment'],
+    ...exps.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(e=>[e.date,e.type==='income'?'Income':'Expense',(getA(e.accountId)?.name||'Unknown').replace(/[\r\n]+/g,' '),getC(e.category).name,e.amount,(e.comment||'').replace(/[\r\n]+/g,' ')])];
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const b=new Blob([csv],{type:'text/csv;charset=utf-8;'}),u=URL.createObjectURL(b),a=document.createElement('a');
   a.href=u;a.download=`SpendSmart_${mName.replace(/\s+/g,'_')}.csv`;a.click();URL.revokeObjectURL(u);
@@ -962,8 +963,10 @@ function saveEdit(){
   if(!amt||amt<=0||!isFinite(amt)){toast('⚠️ Enter a valid amount');return;}
   const acctId=document.getElementById('edit-acct').value;
   if(!acctId){toast('⚠️ Select an account');return;}
+  const date=document.getElementById('edit-date').value;
+  if(!date||date.length<8){toast('⚠️ Pick a valid date');return;}
   const idx=D.expenses.findIndex(x=>x.id===editingId);if(idx===-1)return;
-  D.expenses[idx]={...D.expenses[idx],amount:amt,accountId:acctId,category:document.getElementById('edit-cat').value,date:document.getElementById('edit-date').value,comment:document.getElementById('edit-note').value.trim()};
+  D.expenses[idx]={...D.expenses[idx],amount:amt,accountId:acctId,category:document.getElementById('edit-cat').value,date,comment:document.getElementById('edit-note').value.trim()};
   save();closeSheet('edit-sheet');toast('✅ Entry updated');
   const t=document.querySelector('.tab.on').id.replace('tab-','');
   if(t==='home')renderHome();else if(t==='history')renderHistory();else if(t==='report')renderRptTab();
@@ -1008,7 +1011,7 @@ function confirmAction(title,msg,onOk){
 
 // ── SAVE LABEL REFRESH ────────────────────────────────
 setInterval(updateSaveLbl,30000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){updateSaveLbl();checkMonthEnd();}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){updateSaveLbl();checkMonthEnd();checkRecurring();}});
 
 // ── INIT ─────────────────────────────────────────────
 (async()=>{
