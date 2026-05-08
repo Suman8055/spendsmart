@@ -1,5 +1,5 @@
-const CACHE = 'spendsmart-v1';
-const FILES = ['/', '/index.html', '/manifest.json'];
+const CACHE = 'spendsmart-v2';
+const FILES = ['/spendsmart/', '/spendsmart/index.html', '/spendsmart/manifest.json', '/spendsmart/icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
@@ -18,6 +18,6 @@ self.addEventListener('activate', e => {
 // Offline-first: serve from cache, fall back to network
 self.addEventListener('fetch', e => {
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).catch(() => caches.match('/index.html')))
+    caches.match(e.request).then(cached => cached || fetch(e.request).catch(() => caches.match('/spendsmart/index.html')))
   );
 });
