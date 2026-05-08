@@ -196,6 +196,17 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 .month-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .month-nav .mn-lbl{font-size:19px;font-weight:700}
 .mn-btn{background:var(--card);border:none;border-radius:10px;width:38px;height:38px;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text)}
+
+.type-toggle{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--bg);border-radius:14px;padding:4px;margin-bottom:8px}
+.type-btn{background:none;border:none;border-radius:10px;padding:11px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;color:var(--sub);transition:all .2s}
+.type-btn.on{background:var(--card);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.txn-edit{background:rgba(0,122,255,.1);border:none;font-size:12px;color:var(--blue);cursor:pointer;font-family:inherit;padding:4px 10px;border-radius:8px;min-height:24px}
+.txn-actions{display:flex;gap:6px;margin-top:6px}
+.txn-actions .txn-del,.txn-actions .txn-edit{margin-top:0;flex:1;text-align:center}
+.rec-row{background:var(--card);display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid var(--bg);gap:12px}
+.rec-row:first-child{border-radius:14px 14px 0 0}
+.rec-row:last-child{border-radius:0 0 14px 14px;border-bottom:none}
+.rec-row:only-child{border-radius:14px;border-bottom:none}
 </style>
 </head>
 <body>
@@ -215,7 +226,12 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 
   <!-- ADD -->
   <div id="tab-add" class="tab">
-    <div style="text-align:center;padding:10px 0 4px"><h2 style="font-size:26px;font-weight:700">Add Expense</h2></div>
+    <div style="padding:6px 0 2px">
+      <div class="type-toggle">
+        <button id="type-exp-btn" class="type-btn on" onclick="setAddType('expense')">💸 Expense</button>
+        <button id="type-inc-btn" class="type-btn" onclick="setAddType('income')">💰 Income</button>
+      </div>
+    </div>
     <div class="card" style="margin-bottom:10px">
       <div class="amt-wrap">
         <span class="amt-sym" id="add-sym">₹</span>
@@ -240,7 +256,10 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
         <input id="add-note" type="text" class="f-ctrl" placeholder="e.g. Trip to Temple">
       </div>
     </div>
-    <button class="btn btn-blue" onclick="submitExpense()">Save Expense</button>
+    <label style="display:flex;align-items:center;gap:10px;padding:2px 2px 12px;cursor:pointer;font-size:15px;color:var(--sub)">
+      <input type="checkbox" id="add-recurring" style="width:18px;height:18px;accent-color:var(--blue)"> 🔁 Repeat every month
+    </label>
+    <button id="add-submit-btn" class="btn btn-blue" onclick="submitExpense()">Save Expense</button>
   </div>
 
   <!-- HISTORY -->
@@ -278,6 +297,10 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
           <option value="£">£ GBP</option>
         </select>
       </div>
+    </div>
+    <div class="s-group">
+      <div class="s-hdr">Recurring</div>
+      <div id="recurring-list"></div>
     </div>
     <div class="s-group">
       <div class="s-hdr">Data Safety</div>
@@ -349,6 +372,36 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
   </div>
 </div>
 
+<!-- EDIT SHEET -->
+<div class="sheet-bg" id="edit-sheet">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title">Edit Entry</div>
+    <div class="f-grp" style="text-align:center;padding-bottom:4px">
+      <span class="amt-sym" id="edit-sym" style="font-size:32px;font-weight:700;color:var(--sub)">₹</span>
+      <input id="edit-amount" type="number" inputmode="decimal" placeholder="0" autocomplete="off" style="font-size:38px;font-weight:700;border:none;width:170px;text-align:center;background:transparent;color:var(--text);outline:none;letter-spacing:-1px">
+    </div>
+    <div class="f-grp">
+      <label class="f-lbl">Account</label>
+      <select id="edit-acct" class="f-ctrl"></select>
+    </div>
+    <div class="f-grp">
+      <label class="f-lbl">Category</label>
+      <select id="edit-cat" class="f-ctrl"></select>
+    </div>
+    <div class="f-grp">
+      <label class="f-lbl">Date</label>
+      <input id="edit-date" type="date" class="f-ctrl">
+    </div>
+    <div class="f-grp" style="margin-bottom:0">
+      <label class="f-lbl">Comment</label>
+      <input id="edit-note" type="text" class="f-ctrl" placeholder="optional">
+    </div>
+    <button class="btn btn-blue" style="margin-top:16px" onclick="saveEdit()">Save Changes</button>
+    <button class="btn btn-ghost" style="margin-top:8px" onclick="closeSheet('edit-sheet')">Cancel</button>
+  </div>
+</div>
+
 <!-- CONFIRM SHEET -->
 <div class="sheet-bg" id="confirm-sheet">
   <div class="sheet">
@@ -364,7 +417,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 
 <script>
 // ── VERSION ───────────────────────────────────────────
-const APP_VERSION='v3.1';
+const APP_VERSION='v3.3';
 document.getElementById('ver-lbl').textContent=APP_VERSION;
 
 // ── CONSTANTS ─────────────────────────────────────────
@@ -383,6 +436,14 @@ const CATS=[
   {id:'personal', name:'Personal Care',    emoji:'💆',color:'#FFCC00'},
   {id:'other',    name:'Other',            emoji:'📦',color:'#8E8E93'},
 ];
+const INCOME_CATS=[
+  {id:'salary',   name:'Salary',     emoji:'💼',color:'#34C759'},
+  {id:'freelance',name:'Freelance',  emoji:'💻',color:'#007AFF'},
+  {id:'business', name:'Business',   emoji:'🏪',color:'#FF9500'},
+  {id:'invest',   name:'Investment', emoji:'📈',color:'#5856D6'},
+  {id:'gift',     name:'Gift',       emoji:'🎁',color:'#FF2D55'},
+  {id:'inc_other',name:'Other',      emoji:'💰',color:'#8E8E93'},
+];
 const AT={
   credit_card:{label:'Credit Card',emoji:'💳'},
   debit_card: {label:'Debit Card', emoji:'🏧'},
@@ -393,12 +454,14 @@ const AT={
 };
 
 // ── STATE ─────────────────────────────────────────────
-let D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null};
+let D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[]};
 let rptMonth=new Date(); rptMonth.setDate(1);
 let selColor=COLORS[0];
 let histFilter='all';
 let _idb=null;
 let _reportScheduled=false;
+let addType='expense';
+let editingId=null;
 
 // ── INDEXED DB (backup) ───────────────────────────────
 function openIDB(){
@@ -464,6 +527,8 @@ function fixD(){
   if(!D.nextId)D.nextId=(D.expenses.reduce((m,e)=>Math.max(m,e.id||0),0)||0)+1;
   if(!D.lastReportKey)D.lastReportKey=null;
   if(!D.lastAutoExportKey)D.lastAutoExportKey=null;
+  if(!Array.isArray(D.recurring))D.recurring=[];
+  D.expenses.forEach(e=>{if(!e.type)e.type='expense';});
 }
 function setDefaults(){
   D={accounts:[
@@ -471,7 +536,7 @@ function setDefaults(){
     {id:'a2',name:'SBI Debit 1234',type:'debit_card', color:'#34C759'},
     {id:'a3',name:'Cash',          type:'cash',       color:'#FF9500'},
     {id:'a4',name:'GPay / PhonePe',type:'upi',        color:'#AF52DE'},
-  ],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null};
+  ],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[]};
   save();
 }
 
@@ -494,7 +559,7 @@ function fmtGrp(s){
   }catch(e){return s||'';}
 }
 const getA=id=>D.accounts.find(a=>a.id===id);
-const getC=id=>CATS.find(c=>c.id===id)||CATS[CATS.length-1];
+const getC=id=>CATS.find(c=>c.id===id)||INCOME_CATS.find(c=>c.id===id)||CATS[CATS.length-1];
 const moExp=(yr,mo)=>D.expenses.filter(e=>{
   try{const d=new Date((e.date||'')+'T00:00:00');return d.getFullYear()===yr&&d.getMonth()===mo;}
   catch(e){return false;}
@@ -529,7 +594,9 @@ document.querySelectorAll('.sheet-bg').forEach(bg=>bg.addEventListener('click',e
 function renderHome(){try{
   const now=new Date(),yr=now.getFullYear(),mo=now.getMonth(),day=now.getDate();
   const exps=moExp(yr,mo);
-  const total=exps.reduce((s,e)=>s+e.amount,0);
+  const income=exps.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
+  const spent=exps.filter(e=>e.type!=='income').reduce((s,e)=>s+e.amount,0);
+  const net=income-spent;
   const daysInMo=new Date(yr,mo+1,0).getDate();
   const daysLeft=daysInMo-day;
   const mName=now.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
@@ -555,11 +622,10 @@ function renderHome(){try{
     ${exportBanner}${banner}
     <div class="hero">
       <div class="lbl">📅 ${mName}</div>
-      <div class="big">${fmt(total)}</div>
+      <div class="big">${fmt(spent)}</div>
       <div class="stats">
         <div class="stat-box"><div class="sv">${exps.length}</div><div class="sl">Transactions</div></div>
-        <div class="stat-box"><div class="sv">${fmt(Math.round(day>0?total/day:0))}</div><div class="sl">Avg/Day</div></div>
-        <div class="stat-box"><div class="sv">${daysLeft}</div><div class="sl">Days Left</div></div>
+        ${income>0?`<div class="stat-box"><div class="sv" style="color:#a8ffc4">${fmt(Math.round(income))}</div><div class="sl">Income</div></div><div class="stat-box"><div class="sv" style="color:${net>=0?'#a8ffc4':'#ffb3b0'}">${net>=0?'+':''}${fmt(Math.round(net))}</div><div class="sl">Net</div></div>`:`<div class="stat-box"><div class="sv">${fmt(Math.round(day>0?spent/day:0))}</div><div class="sl">Avg/Day</div></div><div class="stat-box"><div class="sv">${daysLeft}</div><div class="sl">Days Left</div></div>`}
       </div>
     </div>
     <div class="sec-row"><div class="sec">Recent</div><button class="see-all" onclick="showTab('history')">See all →</button></div>
@@ -582,6 +648,7 @@ function dismissMonthExport(key){
 // ── TRANSACTION HTML ──────────────────────────────────
 function txnHtml(e,del=true){
   const a=getA(e.accountId),c=getC(e.category);
+  const isInc=e.type==='income';
   return`<div class="txn" id="txn-${e.id}">
     <div class="txn-ico" style="background:${c.color}20">${c.emoji}</div>
     <div class="txn-info">
@@ -591,25 +658,39 @@ function txnHtml(e,del=true){
       <div class="txn-dt">${fmtDate(e.date)}</div>
     </div>
     <div class="txn-right">
-      <div class="txn-amt">−${fmt(e.amount)}</div>
-      ${del?`<button class="txn-del" onclick="confirmDeleteExp(${e.id})">Delete</button>`:''}
+      <div class="txn-amt" style="color:${isInc?'var(--green)':'var(--red)'}">${isInc?'+':'−'}${fmt(e.amount)}</div>
+      ${del?`<div class="txn-actions"><button class="txn-edit" onclick="editExpense(${e.id})">✏️ Edit</button><button class="txn-del" onclick="confirmDeleteExp(${e.id})">Delete</button></div>`:''}
     </div>
   </div>`;
 }
 
 // ── ADD EXPENSE ───────────────────────────────────────
 function resetAdd(){
+  addType='expense';
   document.getElementById('add-amount').value='';
   document.getElementById('add-date').value=localDateStr();
   document.getElementById('add-note').value='';
   document.getElementById('add-sym').textContent=cur();
+  const expBtn=document.getElementById('type-exp-btn'),incBtn=document.getElementById('type-inc-btn');
+  if(expBtn)expBtn.classList.add('on');
+  if(incBtn)incBtn.classList.remove('on');
+  const rc=document.getElementById('add-recurring');if(rc)rc.checked=false;
+  const sb=document.getElementById('add-submit-btn');if(sb)sb.textContent='Save Expense';
 }
 function populateDDs(){
   document.getElementById('add-acct').innerHTML=D.accounts.length===0
     ?'<option value="">Add an account in Settings first</option>'
     :D.accounts.map(a=>`<option value="${a.id}">${(AT[a.type]||AT.other).emoji} ${esc(a.name)}</option>`).join('');
-  document.getElementById('add-cat').innerHTML=CATS.map(c=>`<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
+  document.getElementById('add-cat').innerHTML=(addType==='income'?INCOME_CATS:CATS).map(c=>`<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
   document.getElementById('add-sym').textContent=cur();
+}
+function setAddType(t){
+  addType=t;
+  document.getElementById('type-exp-btn').classList.toggle('on',t==='expense');
+  document.getElementById('type-inc-btn').classList.toggle('on',t==='income');
+  const sb=document.getElementById('add-submit-btn');
+  if(sb)sb.textContent=t==='income'?'Save Income':'Save Expense';
+  populateDDs();
 }
 function submitExpense(){
   const amt=parseFloat(document.getElementById('add-amount').value);
@@ -620,7 +701,11 @@ function submitExpense(){
   if(!amt||amt<=0||!isFinite(amt)){toast('⚠️ Enter a valid amount');return;}
   if(!acctId){toast('⚠️ Add an account in Settings first');return;}
   if(!date){toast('⚠️ Pick a date');return;}
-  D.expenses.push({id:D.nextId++,accountId:acctId,amount:amt,category:cat,date,comment:note});
+  D.expenses.push({id:D.nextId++,accountId:acctId,amount:amt,category:cat,date,comment:note,type:addType});
+  if(document.getElementById('add-recurring').checked){
+    const _rn=new Date(),_rkey=`${_rn.getFullYear()}-${_rn.getMonth()}`;
+    D.recurring.push({id:'r'+Date.now(),accountId:acctId,amount:amt,category:cat,comment:note,type:addType,lastAdded:_rkey});
+  }
   save();
   toast(`✅ ${getC(cat).emoji} Added: ${fmt(amt)}`);
   showTab('home');
@@ -636,7 +721,7 @@ function renderHistory(){try{
   const groups={};
   list.forEach(e=>{const k=e.date||'';if(!groups[k])groups[k]=[];groups[k].push(e);});
   document.getElementById('hist-list').innerHTML=Object.entries(groups).sort(([a],[b])=>(b||'').localeCompare(a||'')).map(([date,txns])=>{
-    const dt=txns.reduce((s,e)=>s+e.amount,0);
+    const dt=txns.filter(e=>e.type!=='income').reduce((s,e)=>s+e.amount,0);
     return`<div class="dg"><div class="dg-hdr"><span>${fmtGrp(date)}</span><span style="font-weight:600">${fmt(dt)}</span></div>${txns.map(e=>txnHtml(e)).join('')}</div>`;
   }).join('');
 }catch(err){document.getElementById('hist-list').innerHTML=errHtml('history');}}
@@ -682,35 +767,43 @@ function buildReport(yr,mo,isAuto){
   const mName=new Date(yr,mo).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
   if(exps.length===0)return`<div class="empty"><div class="e-ico">📊</div><div class="e-title">No data for ${mName}</div></div>`;
 
-  const total=exps.reduce((s,e)=>s+e.amount,0);
+  const expOnly=exps.filter(e=>e.type!=='income');
+  const incOnly=exps.filter(e=>e.type==='income');
+  const total=expOnly.reduce((s,e)=>s+e.amount,0);
+  const incTotal=incOnly.reduce((s,e)=>s+e.amount,0);
   const daysInMo=new Date(yr,mo+1,0).getDate();
-  const avgDay=total/daysInMo, avgTxn=total/exps.length;
+  const avgDay=total/daysInMo, avgTxn=expOnly.length>0?total/expOnly.length:0;
 
-  // By Account
+  const pd2=new Date(yr,mo-1,1),pyr2=pd2.getFullYear(),pmo2=pd2.getMonth();
+  const prevExps=moExp(pyr2,pmo2).filter(e=>e.type!=='income');
+  const prevTotal=prevExps.reduce((s,e)=>s+e.amount,0);
+  const delta=total-prevTotal;
+
+  // By Account (expenses only)
   const ba={};D.accounts.forEach(a=>{ba[a.id]={acct:a,total:0,count:0};});
-  exps.forEach(e=>{
+  expOnly.forEach(e=>{
     if(ba[e.accountId]){ba[e.accountId].total+=e.amount;ba[e.accountId].count++;}
     else{if(!ba['_u'])ba['_u']={acct:{name:'Unknown',color:'#8E8E93',type:'other'},total:0,count:0};ba['_u'].total+=e.amount;ba['_u'].count++;}
   });
   const acctData=Object.values(ba).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxA=Math.max(...acctData.map(x=>x.total),1);
 
-  // By Category
+  // By Category (expenses only)
   const bc={};CATS.forEach(c=>{bc[c.id]={cat:c,total:0};});
-  exps.forEach(e=>{if(bc[e.category])bc[e.category].total+=e.amount;else bc['other'].total+=e.amount;});
+  expOnly.forEach(e=>{if(bc[e.category])bc[e.category].total+=e.amount;else bc['other'].total+=e.amount;});
   const catData=Object.values(bc).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxC=Math.max(...catData.map(x=>x.total),1);
 
-  const biggest=exps.reduce((m,e)=>e.amount>m.amount?e:m,exps[0]);
+  const biggestExp=expOnly.length>0?expOnly.reduce((m,e)=>e.amount>m.amount?e:m,expOnly[0]):null;
   const topCat=catData[0],topAcct=acctData[0];
 
-  // Day groups
+  // Day groups (all entries)
   const byDay={};exps.forEach(e=>{if(!byDay[e.date])byDay[e.date]=[];byDay[e.date].push(e);});
 
-  const insight=`In <strong>${mName}</strong>, you spent <strong>${fmt(total)}</strong> across <strong>${exps.length} transactions</strong>.
-  Your biggest spending area was <strong>${topCat.cat.emoji} ${topCat.cat.name}</strong> (${((topCat.total/total)*100).toFixed(0)}% of total)
+  const insight=topCat&&topAcct?`In <strong>${mName}</strong>, you spent <strong>${fmt(total)}</strong> across <strong>${expOnly.length} transactions</strong>.
+  Your biggest spending area was <strong>${topCat.cat.emoji} ${topCat.cat.name}</strong> (${total>0?((topCat.total/total)*100).toFixed(0):0}% of total)
   and most charges went through <strong>${esc(topAcct.acct.name)}</strong>.
-  Your daily average was <strong>${fmt(Math.round(avgDay))}</strong>.`;
+  Your daily average was <strong>${fmt(Math.round(avgDay))}</strong>.`:`In <strong>${mName}</strong>, ${exps.length} transaction(s) recorded.`;
 
   return`
     ${isAuto?`<div style="background:#FF9500;color:#fff;border-radius:14px;padding:12px 16px;margin-bottom:16px;font-size:14px;font-weight:600;text-align:center">📅 Auto-generated for ${mName}</div>`:''}
@@ -718,35 +811,36 @@ function buildReport(yr,mo,isAuto){
       <div class="rh-lbl">📅 ${mName} — Monthly Report</div>
       <div class="rh-total">${fmt(total)}</div>
       <div class="rh-sub">${exps.length} transactions &nbsp;·&nbsp; ${D.accounts.length} accounts</div>
+      ${prevTotal>0?`<div style="font-size:13px;opacity:.85;margin-top:6px">${delta>=0?'▲':'▼'} ${fmt(Math.abs(Math.round(delta)))} vs last month</div>`:''}
       <div class="rh-stats">
         <div class="rh-stat"><div class="v">${fmt(Math.round(avgDay))}</div><div class="k">Daily Average</div></div>
-        <div class="rh-stat"><div class="v">${fmt(Math.round(avgTxn))}</div><div class="k">Per Transaction</div></div>
+        ${incOnly.length>0?`<div class="rh-stat"><div class="v">${fmt(Math.round(incTotal))}</div><div class="k">Income</div></div>`:`<div class="rh-stat"><div class="v">${fmt(Math.round(avgTxn))}</div><div class="k">Per Transaction</div></div>`}
       </div>
     </div>
     <div class="insight"><p>${insight}</p></div>
-    <div class="hi-box">
+    ${biggestExp?`<div class="hi-box">
       <div class="hi-lbl">🔝 Biggest Expense</div>
-      <div class="hi-amt">−${fmt(biggest.amount)}</div>
-      ${biggest.comment?`<div class="hi-note">"${esc(biggest.comment)}"</div>`:''}
-      <div class="hi-sub">${fmtDate(biggest.date)} · ${esc(getA(biggest.accountId)?.name||'Unknown')} · ${getC(biggest.category).emoji} ${getC(biggest.category).name}</div>
-    </div>
-    <div class="rpt-sec">💳 By Account</div>
+      <div class="hi-amt">−${fmt(biggestExp.amount)}</div>
+      ${biggestExp.comment?`<div class="hi-note">"${esc(biggestExp.comment)}"</div>`:''}
+      <div class="hi-sub">${fmtDate(biggestExp.date)} · ${esc(getA(biggestExp.accountId)?.name||'Unknown')} · ${getC(biggestExp.category).emoji} ${getC(biggestExp.category).name}</div>
+    </div>`:''}
+    ${acctData.length>0?`<div class="rpt-sec">💳 By Account</div>
     <div class="card">${acctData.map(({acct:a,total:t,count:n})=>`
       <div class="bar-item">
         <div class="bar-top"><span class="bar-name">${(AT[a.type]||AT.other).emoji} ${esc(a.name)}</span><span class="bar-val">${fmt(t)} <span style="font-size:11px">(${n})</span></span></div>
         <div class="bar-track"><div class="bar-fill" style="width:${(t/maxA*100).toFixed(1)}%;background:${a.color}"></div></div>
-        <div class="bar-pct">${(t/total*100).toFixed(1)}% of total</div>
-      </div>`).join('')}</div>
-    <div class="rpt-sec">🏷️ By Category</div>
+        <div class="bar-pct">${total>0?(t/total*100).toFixed(1):0}% of total</div>
+      </div>`).join('')}</div>`:''}
+    ${catData.length>0?`<div class="rpt-sec">🏷️ By Category</div>
     <div class="card">${catData.map(({cat:c,total:t})=>`
       <div class="bar-item">
         <div class="bar-top"><span class="bar-name">${c.emoji} ${c.name}</span><span class="bar-val">${fmt(t)}</span></div>
         <div class="bar-track"><div class="bar-fill" style="width:${(t/maxC*100).toFixed(1)}%;background:${c.color}"></div></div>
-        <div class="bar-pct">${(t/total*100).toFixed(1)}% of total</div>
-      </div>`).join('')}</div>
+        <div class="bar-pct">${total>0?(t/total*100).toFixed(1):0}% of total</div>
+      </div>`).join('')}</div>`:''}
     <div class="rpt-sec">📋 All Transactions</div>
     ${Object.entries(byDay).sort(([a],[b])=>b.localeCompare(a)).map(([date,txns])=>{
-      const dt=txns.reduce((s,e)=>s+e.amount,0);
+      const dt=txns.filter(e=>e.type!=='income').reduce((s,e)=>s+e.amount,0);
       return`<div class="dg"><div class="dg-hdr"><span>${fmtGrp(date)}</span><span style="font-weight:600">${fmt(dt)}</span></div>${txns.sort((a,b)=>b.id-a.id).map(e=>txnHtml(e,false)).join('')}</div>`;
     }).join('')}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0">
@@ -761,11 +855,13 @@ function renderRptTab(){try{
   document.getElementById('rpt-month-lbl').textContent=rptMonth.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
   const exps=moExp(yr,mo);
   if(exps.length===0){document.getElementById('rpt-tab-body').innerHTML=`<div class="empty"><div class="e-ico">📊</div><div class="e-title">No data</div><div class="e-desc">No expenses for this month</div></div>`;return;}
-  const total=exps.reduce((s,e)=>s+e.amount,0);
+  const spent=exps.filter(e=>e.type!=='income').reduce((s,e)=>s+e.amount,0);
+  const incAmt=exps.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
   document.getElementById('rpt-tab-body').innerHTML=`
     <div class="card" style="text-align:center;margin-bottom:12px">
       <div style="font-size:13px;color:var(--sub);margin-bottom:4px">Total Spent</div>
-      <div style="font-size:48px;font-weight:700;letter-spacing:-2px">${fmt(total)}</div>
+      <div style="font-size:48px;font-weight:700;letter-spacing:-2px">${fmt(spent)}</div>
+      ${incAmt>0?`<div style="font-size:14px;color:var(--green);margin-top:4px">+${fmt(incAmt)} income</div>`:''}
       <div style="font-size:13px;color:var(--sub);margin-top:4px">${exps.length} transactions</div>
     </div>
     <button class="btn btn-blue" onclick="openReport(${yr},${mo},false)">📊 View Full Report</button>`;
@@ -784,9 +880,10 @@ function renderSettings(){
   const s=document.getElementById('cur-sel');if(s)s.value=cur();
   const ts=parseInt(localStorage.getItem('ss_ts')||'0');
   if(ts){const d=new Date(ts);document.getElementById('last-saved-lbl').textContent=`Auto-saved · Last: ${d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}`;}
+  renderRecurring();
 }
 function saveCurrency(){D.currency=document.getElementById('cur-sel').value;save();document.getElementById('add-sym').textContent=cur();renderHome();toast('✅ Currency updated');}
-function clearAll(){D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null};save();histFilter='all';populateDDs();renderSettings();renderHome();toast('🗑️ All data cleared');}
+function clearAll(){D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[]};save();histFilter='all';populateDDs();renderSettings();renderHome();toast('🗑️ All data cleared');}
 
 // ── ACCOUNTS ─────────────────────────────────────────
 function openAddAcct(){
@@ -845,6 +942,62 @@ function exportCSV(yr,mo){
   toast('📤 CSV exported');
 }
 
+// ── EDIT EXPENSE ─────────────────────────────────────
+function editExpense(id){
+  const e=D.expenses.find(x=>x.id===id);if(!e)return;
+  editingId=id;
+  document.getElementById('edit-sym').textContent=cur();
+  document.getElementById('edit-amount').value=e.amount;
+  document.getElementById('edit-acct').innerHTML=D.accounts.map(a=>`<option value="${a.id}">${(AT[a.type]||AT.other).emoji} ${esc(a.name)}</option>`).join('');
+  document.getElementById('edit-acct').value=e.accountId;
+  const cats=e.type==='income'?INCOME_CATS:CATS;
+  document.getElementById('edit-cat').innerHTML=cats.map(c=>`<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
+  document.getElementById('edit-cat').value=e.category;
+  document.getElementById('edit-date').value=e.date;
+  document.getElementById('edit-note').value=e.comment||'';
+  openSheet('edit-sheet');
+}
+function saveEdit(){
+  const amt=parseFloat(document.getElementById('edit-amount').value);
+  if(!amt||amt<=0||!isFinite(amt)){toast('⚠️ Enter a valid amount');return;}
+  const acctId=document.getElementById('edit-acct').value;
+  if(!acctId){toast('⚠️ Select an account');return;}
+  const idx=D.expenses.findIndex(x=>x.id===editingId);if(idx===-1)return;
+  D.expenses[idx]={...D.expenses[idx],amount:amt,accountId:acctId,category:document.getElementById('edit-cat').value,date:document.getElementById('edit-date').value,comment:document.getElementById('edit-note').value.trim()};
+  save();closeSheet('edit-sheet');toast('✅ Entry updated');
+  const t=document.querySelector('.tab.on').id.replace('tab-','');
+  if(t==='home')renderHome();else if(t==='history')renderHistory();else if(t==='report')renderRptTab();
+}
+
+// ── RECURRING ─────────────────────────────────────────
+function checkRecurring(){
+  const now=new Date(),yr=now.getFullYear(),mo=now.getMonth();
+  const key=`${yr}-${mo}`;
+  let added=0;
+  D.recurring.forEach(r=>{
+    if(r.lastAdded===key)return;
+    r.lastAdded=key;
+    D.expenses.push({id:D.nextId++,accountId:r.accountId,amount:r.amount,category:r.category,date:localDateStr(),comment:r.comment,type:r.type||'expense'});
+    added++;
+  });
+  if(added>0){save();renderHome();toast(`🔁 Added ${added} recurring expense${added>1?'s':''}`,3500);}
+}
+function renderRecurring(){
+  const el=document.getElementById('recurring-list');if(!el)return;
+  el.innerHTML=D.recurring.length===0
+    ?`<p style="color:var(--sub);font-size:14px;padding:10px 0">No recurring entries.</p>`
+    :`<div>${D.recurring.map(r=>{const c=getC(r.category);return`<div class="rec-row">
+      <div style="font-size:20px">${c.emoji}</div>
+      <div style="flex:1"><div style="font-size:15px;font-weight:600">${fmt(r.amount)} · ${esc(c.name)}</div><div style="font-size:12px;color:var(--sub)">${esc(getA(r.accountId)?.name||'Unknown')} · ${r.type==='income'?'Income':'Expense'}</div></div>
+      <button class="del-btn" onclick="deleteRecurring('${r.id}')">🗑️</button>
+    </div>`;}).join('')}</div>`;
+}
+function deleteRecurring(id){
+  confirmAction('Delete Recurring','Stop this recurring entry?',()=>{
+    D.recurring=D.recurring.filter(x=>x.id!==id);save();renderRecurring();toast('🗑️ Recurring deleted');
+  });
+}
+
 // ── CONFIRM ───────────────────────────────────────────
 function confirmAction(title,msg,onOk){
   document.getElementById('c-title').textContent=title;
@@ -863,6 +1016,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){updateSav
   populateDDs();
   renderHome();
   checkMonthEnd();
+  checkRecurring();
 
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
