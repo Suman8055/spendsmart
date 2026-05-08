@@ -1,8 +1,8 @@
-const CACHE = 'spendsmart-v3';
-const FILES = ['/spendsmart/', '/spendsmart/index.html', '/spendsmart/manifest.json', '/spendsmart/icon.png'];
+const CACHE = 'spendsmart-v4';
+const STATIC = ['/spendsmart/manifest.json', '/spendsmart/icon.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)));
   self.skipWaiting();
 });
 
@@ -15,9 +15,19 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
-// Offline-first: serve from cache, fall back to network
+// Network-first for HTML — always get the latest app when online.
+// Cache-first for static assets (icon, manifest) — rarely change.
 self.addEventListener('fetch', e => {
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request)
+        .catch(() => caches.match('/spendsmart/index.html'))
+    );
+    return;
+  }
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).catch(() => caches.match('/spendsmart/index.html')))
+    caches.match(e.request)
+      .then(cached => cached || fetch(e.request)
+        .catch(() => caches.match('/spendsmart/index.html')))
   );
 });
