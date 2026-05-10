@@ -1,4 +1,4 @@
-const CACHE = 'spendsmart-v8';
+const CACHE = 'spendsmart-v9';
 const STATIC = ['/spendsmart/manifest.json', '/spendsmart/icon.png'];
 
 self.addEventListener('install', e => {
