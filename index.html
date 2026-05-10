@@ -217,6 +217,13 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 .cp-amt{font-size:18px;font-weight:700;margin-top:2px}
 .cp-bar{height:4px;background:var(--bg);border-radius:2px;margin-top:8px;overflow:hidden}
 .cp-fill{height:100%;border-radius:2px;transition:width .6s ease}
+
+/* BILL CARDS */
+.bill-card{background:var(--card);border-radius:16px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px}
+.bill-settings-row{background:var(--card);display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid var(--bg);gap:10px}
+.bill-settings-row:first-child{border-radius:14px 14px 0 0}
+.bill-settings-row:last-child{border-radius:0 0 14px 14px;border-bottom:none}
+.bill-settings-row:only-child{border-radius:14px;border-bottom:none}
 </style>
 </head>
 <body>
@@ -307,6 +314,11 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
           <option value="£">£ GBP</option>
         </select>
       </div>
+    </div>
+    <div class="s-group">
+      <div class="s-hdr">Bills &amp; EMI</div>
+      <div id="bills-list"></div>
+      <button class="btn btn-blue btn-sm" style="margin-top:10px" onclick="openAddBill()">+ Add Bill / EMI</button>
     </div>
     <div class="s-group">
       <div class="s-hdr">Recurring</div>
@@ -412,6 +424,50 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
   </div>
 </div>
 
+<!-- BILL / EMI SHEET -->
+<div class="sheet-bg" id="bill-sheet">
+  <div class="sheet" style="max-height:88vh;overflow-y:auto">
+    <div class="handle"></div>
+    <div class="sheet-title">Add Bill / EMI</div>
+    <div class="type-toggle" style="margin-bottom:14px">
+      <button id="btype-bill" class="type-btn on" onclick="setBillType('bill')">💳 Regular Bill</button>
+      <button id="btype-emi" class="type-btn" onclick="setBillType('emi')">📋 EMI / Loan</button>
+    </div>
+    <div class="f-grp">
+      <label class="f-lbl">Name</label>
+      <input id="b-name" type="text" class="f-ctrl" placeholder="e.g. HDFC CC, Car Loan EMI">
+    </div>
+    <div class="f-grp">
+      <label class="f-lbl">Amount <span style="font-weight:400;color:var(--sub)">(0 = variable each month)</span></label>
+      <input id="b-amount" type="number" inputmode="decimal" class="f-ctrl" placeholder="12500">
+    </div>
+    <div class="f-grp">
+      <label class="f-lbl">Due Day Each Month</label>
+      <select id="b-dueday" class="f-ctrl"></select>
+    </div>
+    <div class="f-grp">
+      <label class="f-lbl">Pay From Account</label>
+      <select id="b-acct" class="f-ctrl"></select>
+    </div>
+    <div class="f-grp">
+      <label class="f-lbl">Category</label>
+      <select id="b-cat" class="f-ctrl"></select>
+    </div>
+    <div id="emi-extra" style="display:none">
+      <div class="f-grp">
+        <label class="f-lbl">Total EMI Months</label>
+        <input id="b-emi-total" type="number" inputmode="numeric" class="f-ctrl" placeholder="48">
+      </div>
+      <div class="f-grp">
+        <label class="f-lbl">EMIs Already Paid</label>
+        <input id="b-emi-paid" type="number" inputmode="numeric" class="f-ctrl" placeholder="0">
+      </div>
+    </div>
+    <button class="btn btn-blue" style="margin-top:16px" onclick="saveBill()">Add</button>
+    <button class="btn btn-ghost" style="margin-top:8px" onclick="closeSheet('bill-sheet')">Cancel</button>
+  </div>
+</div>
+
 <!-- CONFIRM SHEET -->
 <div class="sheet-bg" id="confirm-sheet">
   <div class="sheet">
@@ -427,7 +483,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 
 <script>
 // ── VERSION ───────────────────────────────────────────
-const APP_VERSION='v3.5';
+const APP_VERSION='v3.6';
 document.getElementById('ver-lbl').textContent=APP_VERSION;
 
 // ── CONSTANTS ─────────────────────────────────────────
@@ -464,7 +520,7 @@ const AT={
 };
 
 // ── STATE ─────────────────────────────────────────────
-let D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[]};
+let D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[],bills:[]};
 let rptMonth=new Date(); rptMonth.setDate(1);
 let selColor=COLORS[0];
 let histFilter='all';
@@ -472,6 +528,7 @@ let _idb=null;
 let _reportScheduled=false;
 let addType='expense';
 let editingId=null;
+let billType='bill';
 
 // ── INDEXED DB (backup) ───────────────────────────────
 function openIDB(){
@@ -538,6 +595,22 @@ function fixD(){
   if(!D.lastReportKey)D.lastReportKey=null;
   if(!D.lastAutoExportKey)D.lastAutoExportKey=null;
   if(!Array.isArray(D.recurring))D.recurring=[];
+  if(!Array.isArray(D.bills))D.bills=[];
+  D.bills=D.bills.filter(b=>b&&typeof b==='object');
+  D.bills.forEach(b=>{
+    if(!b.id||typeof b.id!=='string'||!/^[\w-]+$/.test(b.id))b.id='b'+Date.now();
+    if(!Array.isArray(b.paidMonths))b.paidMonths=[];
+    if(!b.dueDay||b.dueDay<1||b.dueDay>28)b.dueDay=1;
+    if(!b.type)b.type='bill';
+    if(typeof b.amount!=='number'||b.amount<0||!isFinite(b.amount))b.amount=0;
+    if(!b.name||typeof b.name!=='string')b.name='Bill';
+    if(!b.category)b.category='bills';
+    if(!b.accountId||typeof b.accountId!=='string')b.accountId=D.accounts[0]?.id||'';
+    if(typeof b.emiTotal!=='number'||b.emiTotal<0)b.emiTotal=0;
+    if(typeof b.emiPaid!=='number'||b.emiPaid<0)b.emiPaid=0;
+    if(b.emiPaid>b.emiTotal)b.emiPaid=b.emiTotal;
+    if(b.paidMonths.length>36)b.paidMonths=b.paidMonths.slice(-36);
+  });
   D.expenses.forEach(e=>{if(!e.type)e.type='expense';});
 }
 function setDefaults(){
@@ -546,7 +619,7 @@ function setDefaults(){
     {id:'a2',name:'SBI Debit 1234',type:'debit_card', color:'#34C759'},
     {id:'a3',name:'Cash',          type:'cash',       color:'#FF9500'},
     {id:'a4',name:'GPay / PhonePe',type:'upi',        color:'#AF52DE'},
-  ],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[]};
+  ],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[],bills:[]};
   save();
 }
 
@@ -680,7 +753,8 @@ function renderHome(){try{
       </div>
     </div>
     ${catPodsHtml}
-    <div class="sec-row" style="margin-top:${topCats.length>0?'6px':'0'}"><div class="sec">Recent</div><button class="see-all" onclick="showTab('history')">See all →</button></div>
+    ${billsHomeHtml()}
+    <div class="sec-row" style="margin-top:6px"><div class="sec">Recent</div><button class="see-all" onclick="showTab('history')">See all →</button></div>
     ${recent.length===0
       ?`<div class="empty"><div class="e-ico">📝</div><div class="e-title">No expenses yet</div><div class="e-desc">Tap ＋ to add your first expense</div></div>`
       :recent.map(e=>txnHtml(e)).join('')}`;
@@ -933,10 +1007,11 @@ function renderSettings(){
   const s=document.getElementById('cur-sel');if(s)s.value=cur();
   const ts=parseInt(localStorage.getItem('ss_ts')||'0');
   if(ts){const d=new Date(ts);document.getElementById('last-saved-lbl').textContent=`Auto-saved · Last: ${d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}`;}
+  renderBills();
   renderRecurring();
 }
 function saveCurrency(){D.currency=document.getElementById('cur-sel').value;save();document.getElementById('add-sym').textContent=cur();renderHome();toast('✅ Currency updated');}
-function clearAll(){D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[]};save();histFilter='all';populateDDs();renderSettings();renderHome();toast('🗑️ All data cleared');}
+function clearAll(){D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[],bills:[]};save();histFilter='all';populateDDs();renderSettings();renderHome();toast('🗑️ All data cleared');}
 
 // ── ACCOUNTS ─────────────────────────────────────────
 function openAddAcct(){
@@ -1022,6 +1097,143 @@ function saveEdit(){
   save();closeSheet('edit-sheet');toast('✅ Entry updated');
   const t=document.querySelector('.tab.on').id.replace('tab-','');
   if(t==='home')renderHome();else if(t==='history')renderHistory();else if(t==='report')renderRptTab();
+}
+
+// ── BILLS & EMI ───────────────────────────────────────
+function billStatus(b){
+  const now=new Date(),yr=now.getFullYear(),mo=now.getMonth(),day=now.getDate();
+  const curKey=`${yr}-${mo}`;
+  const paid=(b.paidMonths||[]).includes(curKey);
+  const daysInThisMo=new Date(yr,mo+1,0).getDate();
+  const effDue=Math.min(b.dueDay,daysInThisMo);
+  if(!paid){const du=effDue-day;return{daysUntil:du,paid:false,overdue:du<0};}
+  const daysInNextMo=new Date(yr,mo+2,0).getDate();
+  const nextDue=Math.min(b.dueDay,daysInNextMo);
+  const du=(daysInThisMo-day)+nextDue;
+  return{daysUntil:du,paid:true,overdue:false};
+}
+function billUrgColor(du,overdue){
+  if(overdue||du===0)return'#FF3B30';
+  if(du<=2)return'#FF6B35';
+  if(du<=5)return'#FF9500';
+  return'#007AFF';
+}
+function billUrgLabel(du,overdue){
+  if(overdue)return`⚠️ Overdue by ${Math.abs(du)} day${Math.abs(du)!==1?'s':''}`;
+  if(du===0)return'🔴 Due today!';
+  if(du===1)return'🟠 Due tomorrow';
+  return`🔵 Due in ${du} days`;
+}
+function getBillsForHome(){
+  return(D.bills||[]).filter(b=>{
+    if(b.type==='emi'&&(b.emiPaid||0)>=(b.emiTotal||1))return false;
+    const s=billStatus(b);
+    return s.overdue||s.daysUntil<=7;
+  }).sort((a,b_)=>billStatus(a).daysUntil-billStatus(b_).daysUntil);
+}
+function billsHomeHtml(){
+  const due=getBillsForHome();if(due.length===0)return'';
+  return`<div class="sec" style="font-size:17px;margin:16px 0 10px">📋 Bills &amp; EMI</div>
+    ${due.map(b=>{
+      const s=billStatus(b),cl=billUrgColor(s.daysUntil,s.overdue),lbl=billUrgLabel(s.daysUntil,s.overdue);
+      const emiPaid=b.emiPaid||0,emiTotal=b.emiTotal||1;
+      const pct=Math.round(emiPaid/emiTotal*100);
+      const remaining=fmtCompact((emiTotal-emiPaid)*b.amount);
+      return`<div class="bill-card" style="border-left:4px solid ${cl}">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:700">${esc(b.name)}</div>
+          <div style="font-size:12px;color:var(--sub);margin-top:3px">${lbl}</div>
+          ${b.type==='emi'?`<div style="margin-top:7px"><div style="font-size:11px;color:var(--sub);margin-bottom:3px">${emiPaid}/${b.emiTotal} EMIs${b.amount>0?` &nbsp;·&nbsp; ${remaining} left`:''}</div><div style="height:4px;background:var(--bg);border-radius:2px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${cl};border-radius:2px;transition:width .5s"></div></div></div>`:''}
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          ${b.amount>0?`<div style="font-size:17px;font-weight:700">${fmt(b.amount)}</div>`:`<div style="font-size:12px;color:var(--sub)">Variable</div>`}
+          ${!s.paid?`<button onclick="confirmMarkPaid('${b.id}')" style="margin-top:6px;background:${cl}20;border:1px solid ${cl}55;color:${cl};font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;cursor:pointer;font-family:inherit;white-space:nowrap">✓ Mark Paid</button>`:`<div style="font-size:11px;color:var(--green);font-weight:600;margin-top:6px">✅ Paid</div>`}
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+function confirmMarkPaid(id){
+  const b=D.bills.find(x=>x.id===id);if(!b)return;
+  const msg=b.amount>0?`Mark "${b.name}" as paid? ${fmt(b.amount)} will be added as an expense.`:`Mark "${b.name}" as paid this month?`;
+  confirmAction('Mark as Paid',msg,()=>markBillPaid(id));
+}
+function markBillPaid(id){
+  const b=D.bills.find(x=>x.id===id);if(!b)return;
+  const now=new Date(),yr=now.getFullYear(),mo=now.getMonth(),curKey=`${yr}-${mo}`;
+  if(!b.paidMonths)b.paidMonths=[];
+  if(b.paidMonths.includes(curKey)){toast('Already marked paid this month');return;}
+  b.paidMonths.push(curKey);
+  if(b.type==='emi')b.emiPaid=(b.emiPaid||0)+1;
+  if(b.amount>0)D.expenses.push({id:D.nextId++,accountId:b.accountId,amount:b.amount,category:b.category||'bills',date:localDateStr(),comment:b.name,type:'expense'});
+  save();renderHome();
+  toast(b.amount>0?`✅ ${b.name} paid — ${fmt(b.amount)} added`:`✅ ${b.name} marked paid`,3000);
+  if(b.type==='emi'&&(b.emiPaid||0)>=(b.emiTotal||1))setTimeout(()=>toast(`🎉 ${b.name} fully paid off!`,4000),600);
+}
+function openAddBill(){
+  if(D.accounts.length===0){toast('⚠️ Add an account in Settings first');return;}
+  billType='bill';
+  document.getElementById('b-name').value='';
+  document.getElementById('b-amount').value='';
+  document.getElementById('b-dueday').innerHTML=Array.from({length:28},(_,i)=>{const d=i+1;const sfx=d===1?'st':d===2?'nd':d===3?'rd':'th';return`<option value="${d}">${d}${sfx} of every month</option>`;}).join('');
+  document.getElementById('b-acct').innerHTML=D.accounts.map(a=>`<option value="${a.id}">${(AT[a.type]||AT.other).emoji} ${esc(a.name)}</option>`).join('');
+  document.getElementById('b-cat').innerHTML=CATS.map(c=>`<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
+  document.getElementById('b-cat').value='bills';
+  document.getElementById('btype-bill').classList.add('on');
+  document.getElementById('btype-emi').classList.remove('on');
+  document.getElementById('emi-extra').style.display='none';
+  document.getElementById('b-emi-total').value='';
+  document.getElementById('b-emi-paid').value='0';
+  openSheet('bill-sheet');
+}
+function setBillType(t){
+  billType=t;
+  document.getElementById('btype-bill').classList.toggle('on',t==='bill');
+  document.getElementById('btype-emi').classList.toggle('on',t==='emi');
+  document.getElementById('emi-extra').style.display=t==='emi'?'block':'none';
+}
+function saveBill(){
+  const name=document.getElementById('b-name').value.trim();
+  if(!name){toast('⚠️ Enter a name');return;}
+  const amount=parseFloat(document.getElementById('b-amount').value)||0;
+  if(amount<0||!isFinite(amount)){toast('⚠️ Invalid amount');return;}
+  const dueDay=parseInt(document.getElementById('b-dueday').value)||1;
+  const accountId=document.getElementById('b-acct').value;
+  if(!accountId){toast('⚠️ Select an account');return;}
+  const category=document.getElementById('b-cat').value;
+  let emiTotal=0,emiPaid=0;
+  if(billType==='emi'){
+    emiTotal=parseInt(document.getElementById('b-emi-total').value)||0;
+    emiPaid=parseInt(document.getElementById('b-emi-paid').value)||0;
+    if(emiTotal<1){toast('⚠️ Enter total EMI months');return;}
+    if(emiPaid<0||emiPaid>emiTotal){toast('⚠️ Paid count must be 0 – '+emiTotal);return;}
+  }
+  D.bills.push({id:'b'+Date.now(),name,type:billType,amount,dueDay,accountId,category,paidMonths:[],emiTotal,emiPaid});
+  save();closeSheet('bill-sheet');renderSettings();renderHome();toast('✅ Bill added');
+}
+function deleteBill(id){
+  const b=D.bills.find(x=>x.id===id);if(!b)return;
+  confirmAction('Remove Bill',`Remove "${b.name}" from reminders?`,()=>{
+    D.bills=D.bills.filter(x=>x.id!==id);save();renderSettings();renderHome();toast('🗑️ Bill removed');
+  });
+}
+function renderBills(){
+  const el=document.getElementById('bills-list');if(!el)return;
+  if(!D.bills||D.bills.length===0){el.innerHTML=`<p style="color:var(--sub);font-size:14px;padding:10px 0">No bills added yet.</p>`;return;}
+  el.innerHTML=`<div>${D.bills.map(b=>{
+    const s=billStatus(b),cl=billUrgColor(s.daysUntil,s.overdue);
+    const isEmi=b.type==='emi',emiPaid=b.emiPaid||0,emiTotal=b.emiTotal||1;
+    const complete=isEmi&&emiPaid>=emiTotal,pct=Math.round(emiPaid/emiTotal*100);
+    const urgCol=complete?'#34C759':cl;
+    return`<div class="bill-settings-row">
+      <div style="width:4px;align-self:stretch;background:${urgCol};border-radius:2px;flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:15px;font-weight:600">${esc(b.name)}</div>
+        <div style="font-size:12px;color:var(--sub);margin-top:1px">${b.amount>0?fmt(b.amount)+' · ':'Variable · '}Due ${b.dueDay}${b.dueDay===1?'st':b.dueDay===2?'nd':b.dueDay===3?'rd':'th'} every month</div>
+        ${isEmi?`<div style="margin-top:5px"><div style="font-size:11px;color:var(--sub);margin-bottom:3px">${emiPaid}/${b.emiTotal} EMIs${complete?' <span style="color:var(--green)">✅ Complete!</span>':''}</div><div style="height:3px;background:var(--bg);border-radius:2px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${urgCol};border-radius:2px"></div></div></div>`:''}
+      </div>
+      <button class="del-btn" onclick="deleteBill('${b.id}')">🗑️</button>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 // ── RECURRING ─────────────────────────────────────────
