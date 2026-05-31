@@ -282,7 +282,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 
   <!-- HISTORY -->
   <div id="tab-history" class="tab">
-    <input id="hist-search" type="search" class="f-ctrl" placeholder="🔍 Search by name, comment, amount…" style="margin-bottom:10px" oninput="renderHistory()">
+    <input id="hist-search" type="search" class="f-ctrl" placeholder="🔍 Search by name, comment, amount…" style="margin-bottom:10px" oninput="debouncedHistSearch()">
     <div class="chips" id="hist-chips"></div>
     <div id="hist-list"></div>
   </div>
@@ -513,7 +513,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 
 <script>
 // ── VERSION ───────────────────────────────────────────
-const APP_VERSION='v3.8';
+const APP_VERSION='v3.9';
 document.getElementById('ver-lbl').textContent=APP_VERSION;
 
 // ── CONSTANTS ─────────────────────────────────────────
@@ -551,7 +551,7 @@ const AT={
 
 // ── STATE ─────────────────────────────────────────────
 let D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[],bills:[],budgets:{}};
-let rptMonth=new Date(); rptMonth.setDate(1);
+let rptMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);
 let selColor=COLORS[0];
 let histFilter='all';
 let _idb=null;
@@ -560,6 +560,9 @@ let addType='expense';
 let editingId=null;
 let billType='bill';
 let _recurringInFlight=false;
+let _saveFailedPermanently=false;
+let _idSeq=0;
+function genId(prefix){const ts=Date.now();if(ts<=_idSeq)_idSeq++;else _idSeq=ts;return prefix+_idSeq;}
 
 // ── INDEXED DB (backup) ───────────────────────────────
 function openIDB(){
@@ -588,12 +591,15 @@ async function idbLoad(){
 
 // ── AUTO-SAVE ─────────────────────────────────────────
 function save(){
+  if(_saveFailedPermanently){toast('🚨 Storage full — export backup before adding data',6000);return;}
   try{
     localStorage.setItem('ss_v3',JSON.stringify(D));
     localStorage.setItem('ss_ts',Date.now().toString());
     flashDot();
   }catch(e){
-    toast('⚠️ Storage full — export a backup now!',5000);
+    _saveFailedPermanently=true;
+    toast('🚨 Storage full — export a backup NOW! Data cannot be saved.',8000);
+    return;
   }
   idbSave();
   updateSaveLbl();
@@ -629,7 +635,7 @@ function fixD(){
   if(!Array.isArray(D.bills))D.bills=[];
   D.bills=D.bills.filter(b=>b&&typeof b==='object');
   D.bills.forEach(b=>{
-    if(!b.id||typeof b.id!=='string'||!/^[\w-]+$/.test(b.id))b.id='b'+Date.now();
+    if(!b.id||typeof b.id!=='string'||!/^[\w-]+$/.test(b.id))b.id=genId('b');
     if(!Array.isArray(b.paidMonths))b.paidMonths=[];
     if(!b.dueDay||b.dueDay<1||b.dueDay>28)b.dueDay=1;
     if(!b.type)b.type='bill';
@@ -725,7 +731,7 @@ function renderHome(){try{
   const forecast=day>0?Math.round((spent/day)*daysInMo):0;
   const pct=Math.min(100,Math.round(day/daysInMo*100));
   const mName=now.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
-  const recent=[...D.expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.id-a.id).slice(0,8);
+  const recent=(()=>{const h=[];for(const e of D.expenses){h.push(e);if(h.length>8){let mi=0;for(let j=1;j<h.length;j++){const a=h[j],b=h[mi];if((a.date||'')<(b.date||'')||(a.date===b.date&&a.id<b.id))mi=j;}h.splice(mi,1);}}return h.sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.id-a.id);})();
 
   // SVG ring: shows % of month elapsed
   const R=52,CX=65,CY=65,C=+(2*Math.PI*R).toFixed(2);
@@ -869,7 +875,7 @@ function submitExpense(){
   D.expenses.push({id:D.nextId++,accountId:acctId,amount:amt,category:cat,date,comment:note,type:addType});
   if(document.getElementById('add-recurring').checked){
     const _rn=new Date(),_rkey=`${_rn.getFullYear()}-${_rn.getMonth()}`;
-    D.recurring.push({id:'r'+Date.now(),accountId:acctId,amount:amt,category:cat,comment:note,type:addType,lastAdded:_rkey});
+    D.recurring.push({id:genId('r'),accountId:acctId,amount:amt,category:cat,comment:note,type:addType,lastAdded:_rkey});
   }
   save();
   toast(`✅ ${getC(cat).emoji} Added: ${fmt(amt)}`);
@@ -877,6 +883,8 @@ function submitExpense(){
 }
 
 // ── HISTORY ───────────────────────────────────────────
+let _histSearchTimer=null;
+function debouncedHistSearch(){clearTimeout(_histSearchTimer);_histSearchTimer=setTimeout(renderHistory,200);}
 function renderHistory(){try{
   const chips=[{key:'all',label:'All'},...D.accounts.map(a=>({key:a.id,label:esc(a.name)}))];
   document.getElementById('hist-chips').innerHTML=chips.map(c=>`<button class="chip ${histFilter===c.key?'on':''}" onclick="setFilter('${esc(c.key)}')">${c.label}</button>`).join('');
@@ -1037,7 +1045,7 @@ function renderRptTab(){try{
     </div>
     <button class="btn btn-blue" onclick="openReport(${yr},${mo},false)">📊 View Full Report</button>`;
 }catch(err){document.getElementById('rpt-tab-body').innerHTML=errHtml('report-tab');}}
-function changeRptMonth(d){rptMonth.setMonth(rptMonth.getMonth()+d);rptMonth.setDate(1);renderRptTab();}
+function changeRptMonth(d){rptMonth=new Date(rptMonth.getFullYear(),rptMonth.getMonth()+d,1);renderRptTab();}
 
 // ── SETTINGS ─────────────────────────────────────────
 function renderSettings(){
@@ -1075,14 +1083,18 @@ function pickColor(c){selColor=c;renderColorGrid();}
 function saveAcct(){
   const name=document.getElementById('s-name').value.trim();
   if(!name){toast('⚠️ Enter a name');return;}
-  D.accounts.push({id:'a'+Date.now(),name,type:document.getElementById('s-type').value,color:selColor});
+  D.accounts.push({id:genId('a'),name,type:document.getElementById('s-type').value,color:selColor});
   save();closeSheet('acct-sheet');renderSettings();populateDDs();toast('✅ Account added');
 }
 function confirmDeleteAcct(id){
   const a=D.accounts.find(x=>x.id===id);if(!a)return;
   const n=D.expenses.filter(e=>e.accountId===id).length;
-  confirmAction('Delete Account',`Delete "${a.name}"? Its ${n} transaction(s) will remain as "Unknown Account".`,()=>{
-    D.accounts=D.accounts.filter(x=>x.id!==id);save();if(histFilter===id)histFilter='all';renderSettings();populateDDs();toast('🗑️ Account deleted');
+  confirmAction('Delete Account',`Delete "${a.name}"? Its ${n} transaction(s), related bills and recurring entries will also be removed.`,()=>{
+    D.accounts=D.accounts.filter(x=>x.id!==id);
+    D.bills=D.bills.filter(b=>b.accountId!==id);
+    D.recurring=D.recurring.filter(r=>r.accountId!==id);
+    if(histFilter===id)histFilter='all';
+    save();renderSettings();populateDDs();renderHome();toast('🗑️ Account deleted');
   });
 }
 
@@ -1259,7 +1271,7 @@ function saveBill(){
     if(emiTotal<1){toast('⚠️ Enter total EMI months');return;}
     if(emiPaid<0||emiPaid>emiTotal){toast('⚠️ Paid count must be 0 – '+emiTotal);return;}
   }
-  D.bills.push({id:'b'+Date.now(),name,type:billType,amount,dueDay,accountId,category,paidMonths:[],emiTotal,emiPaid});
+  D.bills.push({id:genId('b'),name,type:billType,amount,dueDay,accountId,category,paidMonths:[],emiTotal,emiPaid});
   save();closeSheet('bill-sheet');renderSettings();renderHome();toast('✅ Bill added');
 }
 function deleteBill(id){
@@ -1448,7 +1460,8 @@ function previewCSV(rows){
     else if(fmt2.amtCol)amt=parseBankAmt(r[fmt2.amtCol]);
     if(fmt2.descCol)desc=(r[fmt2.descCol]||'').substring(0,80);
     if(!date||amt<=0)return;
-    entries.push({date,amt,desc,cat:autoCategory(desc)});
+    const _dupId=`${date}|${amt.toFixed(2)}|${desc.substring(0,40).trim()}`;
+    entries.push({date,amt,desc,cat:autoCategory(desc),_dupId});
   });
   _csvRows=entries;
   if(entries.length===0){
@@ -1479,9 +1492,10 @@ function confirmCSVImport(){
   if(!acctId){toast('⚠️ Select an account');return;}
   let added=0,skipped=0;
   _csvRows.forEach(e=>{
-    const exists=D.expenses.some(x=>x.date===e.date&&Math.abs(x.amount-e.amt)<0.01&&(x.comment||'')===(e.desc||''));
-    if(exists){skipped++;return;}
-    D.expenses.push({id:D.nextId++,accountId:acctId,amount:e.amt,category:e.cat,date:e.date,comment:e.desc,type:'expense'});
+    const byDupId=e._dupId&&D.expenses.some(x=>x._csvDupId===e._dupId);
+    const byTriple=D.expenses.some(x=>x.date===e.date&&Math.abs(x.amount-e.amt)<0.01&&(x.comment||'')===(e.desc||''));
+    if(byDupId||byTriple){skipped++;return;}
+    D.expenses.push({id:D.nextId++,accountId:acctId,amount:e.amt,category:e.cat,date:e.date,comment:e.desc,type:'expense',_csvDupId:e._dupId});
     added++;
   });
   save();closeSheet('csv-sheet');renderHome();
