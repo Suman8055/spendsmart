@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SpendSmart">
 <meta name="theme-color" content="#007AFF">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none';">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.png">
 <title>SpendSmart</title>
@@ -512,7 +513,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 
 <script>
 // ── VERSION ───────────────────────────────────────────
-const APP_VERSION='v3.7';
+const APP_VERSION='v3.8';
 document.getElementById('ver-lbl').textContent=APP_VERSION;
 
 // ── CONSTANTS ─────────────────────────────────────────
@@ -558,6 +559,7 @@ let _reportScheduled=false;
 let addType='expense';
 let editingId=null;
 let billType='bill';
+let _recurringInFlight=false;
 
 // ── INDEXED DB (backup) ───────────────────────────────
 function openIDB(){
@@ -616,7 +618,7 @@ async function load(){
 function fixD(){
   if(!Array.isArray(D.accounts))D.accounts=[];
   if(!Array.isArray(D.expenses))D.expenses=[];
-  if(!D.currency)D.currency='₹';
+  if(!['₹','$','€','£'].includes(D.currency))D.currency='₹';
   D.expenses=D.expenses.filter(e=>e&&typeof e.amount==='number'&&!isNaN(e.amount)&&e.amount>0&&typeof e.date==='string'&&e.date.length>=8);
   D.accounts=D.accounts.filter(a=>a&&typeof a.id==='string'&&/^[\w-]+$/.test(a.id)&&typeof a.name==='string');
   D.accounts.forEach(a=>{if(!a.type||!AT[a.type])a.type='other';if(!a.color||typeof a.color!=='string')a.color='#8E8E93';});
@@ -659,7 +661,7 @@ function fmtCompact(n){const c=cur();if(n>=10000000)return c+(n/10000000).toFixe
 // ── HELPERS ───────────────────────────────────────────
 const cur=()=>D.currency||'₹';
 const fmt=n=>cur()+Number(n).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:2});
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function fmtDate(s){
   try{return new Date((s||'')+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});}
   catch(e){return s||'';}
@@ -877,7 +879,7 @@ function submitExpense(){
 // ── HISTORY ───────────────────────────────────────────
 function renderHistory(){try{
   const chips=[{key:'all',label:'All'},...D.accounts.map(a=>({key:a.id,label:esc(a.name)}))];
-  document.getElementById('hist-chips').innerHTML=chips.map(c=>`<button class="chip ${histFilter===c.key?'on':''}" onclick="setFilter('${c.key}')">${c.label}</button>`).join('');
+  document.getElementById('hist-chips').innerHTML=chips.map(c=>`<button class="chip ${histFilter===c.key?'on':''}" onclick="setFilter('${esc(c.key)}')">${c.label}</button>`).join('');
   let list=[...D.expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.id-a.id);
   if(histFilter!=='all')list=list.filter(e=>e.accountId===histFilter);
   const q=(document.getElementById('hist-search')?.value||'').toLowerCase().trim();
@@ -1054,7 +1056,11 @@ function renderSettings(){
   renderRecurring();
 }
 function saveCurrency(){D.currency=document.getElementById('cur-sel').value;save();document.getElementById('add-sym').textContent=cur();renderHome();toast('✅ Currency updated');}
-function clearAll(){D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[],bills:[],budgets:{}};save();histFilter='all';populateDDs();renderSettings();renderHome();toast('🗑️ All data cleared');}
+async function clearAll(){
+  D={accounts:[],expenses:[],currency:'₹',nextId:1,lastReportKey:null,lastAutoExportKey:null,recurring:[],bills:[],budgets:{}};
+  try{const db=await openIDB();if(db){const tx=db.transaction('s','readwrite');tx.objectStore('s').delete('main');}}catch(e){}
+  save();histFilter='all';populateDDs();renderSettings();renderHome();toast('🗑️ All data cleared');
+}
 
 // ── ACCOUNTS ─────────────────────────────────────────
 function openAddAcct(){
@@ -1093,6 +1099,7 @@ function importBackup(event){
   r.onload=e=>{
     try{
       const imp=JSON.parse(e.target.result);
+      ['__proto__','constructor','prototype'].forEach(k=>{delete imp[k];});
       if(!Array.isArray(imp.accounts)||!Array.isArray(imp.expenses))throw new Error('invalid');
       const prev=JSON.stringify(D);
       D=imp;
@@ -1205,9 +1212,11 @@ function markBillPaid(id){
   const now=new Date(),yr=now.getFullYear(),mo=now.getMonth(),curKey=`${yr}-${mo}`;
   if(!b.paidMonths)b.paidMonths=[];
   if(b.paidMonths.includes(curKey)){toast('Already marked paid this month');return;}
+  const dedupKey=`bill-${id}-${curKey}`;
+  if(D.expenses.some(e=>e._dedupKey===dedupKey)){toast('Already marked paid this month');return;}
   b.paidMonths.push(curKey);
   if(b.type==='emi')b.emiPaid=(b.emiPaid||0)+1;
-  if(b.amount>0)D.expenses.push({id:D.nextId++,accountId:b.accountId,amount:b.amount,category:b.category||'bills',date:localDateStr(),comment:b.name,type:'expense'});
+  if(b.amount>0)D.expenses.push({id:D.nextId++,accountId:b.accountId,amount:b.amount,category:b.category||'bills',date:localDateStr(),comment:b.name,type:'expense',_dedupKey:dedupKey});
   save();renderHome();
   toast(b.amount>0?`✅ ${b.name} paid — ${fmt(b.amount)} added`:`✅ ${b.name} marked paid`,3000);
   if(b.type==='emi'&&(b.emiPaid||0)>=(b.emiTotal||1))setTimeout(()=>toast(`🎉 ${b.name} fully paid off!`,4000),600);
@@ -1281,16 +1290,20 @@ function renderBills(){
 
 // ── RECURRING ─────────────────────────────────────────
 function checkRecurring(){
-  const now=new Date(),yr=now.getFullYear(),mo=now.getMonth();
-  const key=`${yr}-${mo}`;
-  let added=0;
-  D.recurring.forEach(r=>{
-    if(r.lastAdded===key)return;
-    r.lastAdded=key;
-    D.expenses.push({id:D.nextId++,accountId:r.accountId,amount:r.amount,category:r.category,date:localDateStr(),comment:r.comment,type:r.type||'expense'});
-    added++;
-  });
-  if(added>0){save();renderHome();toast(`🔁 Added ${added} recurring expense${added>1?'s':''}`,3500);}
+  if(_recurringInFlight)return;
+  _recurringInFlight=true;
+  try{
+    const now=new Date(),yr=now.getFullYear(),mo=now.getMonth();
+    const key=`${yr}-${mo}`;
+    let added=0;
+    D.recurring.forEach(r=>{
+      if(r.lastAdded===key)return;
+      r.lastAdded=key;
+      D.expenses.push({id:D.nextId++,accountId:r.accountId,amount:r.amount,category:r.category,date:localDateStr(),comment:r.comment,type:r.type||'expense'});
+      added++;
+    });
+    if(added>0){save();renderHome();toast(`🔁 Added ${added} recurring expense${added>1?'s':''}`,3500);}
+  }finally{_recurringInFlight=false;}
 }
 function renderRecurring(){
   const el=document.getElementById('recurring-list');if(!el)return;
