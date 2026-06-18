@@ -20,7 +20,9 @@
   --nav:83px;
 }
 @media(prefers-color-scheme:dark){
-  :root{--bg:#1C1C1E;--card:#2C2C2E;--text:#FFF;--sub:#8E8E93;--sep:#38383A}
+  :root{--bg:#000000;--card:#1C1C1E;--text:#FFF;--sub:#8E8E93;--sep:#38383A}
+  #nav{background:rgba(0,0,0,.94)}
+  #hdr{background:#000;border-bottom-color:#2C2C2E}
 }
 html,body{height:100%;overflow:hidden}
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro',sans-serif;background:var(--bg);color:var(--text)}
@@ -57,9 +59,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro',sans-serif;background
 .stat-box .sl{font-size:10px;opacity:.8;margin-top:2px}
 
 /* SECTION */
-.sec{font-size:20px;font-weight:700;margin:16px 0 10px}
+.sec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--sub);margin:16px 0 10px}
 .sec-row{display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px}
-.sec-row .sec{margin:0}
+.sec-row .sec{margin:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--sub)}
 .see-all{background:none;border:none;color:var(--blue);font-size:14px;cursor:pointer;font-family:inherit}
 
 /* TRANSACTION */
@@ -232,7 +234,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 
   <!-- HEADER -->
   <div id="hdr">
-    <h1>💰 SpendSmart <span id="ver-lbl" style="font-size:11px;font-weight:400;color:var(--sub);vertical-align:middle"></span></h1>
+    <h1>SpendSmart <span id="ver-lbl" style="font-size:11px;font-weight:400;color:var(--sub);vertical-align:middle"></span></h1>
     <div style="display:flex;align-items:center;gap:8px">
       <span id="save-dot"></span>
       <span id="save-time" style="font-size:11px;color:var(--sub)"></span>
@@ -253,7 +255,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
     <div class="card" style="margin-bottom:10px">
       <div class="amt-wrap">
         <span class="amt-sym" id="add-sym">₹</span>
-        <input id="add-amount" type="number" inputmode="decimal" placeholder="0" autocomplete="off">
+        <input id="add-amount" type="tel" inputmode="decimal" placeholder="0" autocomplete="off">
       </div>
     </div>
     <div class="card">
@@ -412,7 +414,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
     <div class="sheet-title">Edit Entry</div>
     <div class="f-grp" style="text-align:center;padding-bottom:4px">
       <span class="amt-sym" id="edit-sym" style="font-size:32px;font-weight:700;color:var(--sub)">₹</span>
-      <input id="edit-amount" type="number" inputmode="decimal" placeholder="0" autocomplete="off" style="font-size:38px;font-weight:700;border:none;width:170px;text-align:center;background:transparent;color:var(--text);outline:none;letter-spacing:-1px">
+      <input id="edit-amount" type="tel" inputmode="decimal" placeholder="0" autocomplete="off" style="font-size:38px;font-weight:700;border:none;width:170px;text-align:center;background:transparent;color:var(--text);outline:none;letter-spacing:-1px">
     </div>
     <div class="f-grp">
       <label class="f-lbl">Account</label>
@@ -450,7 +452,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
     </div>
     <div class="f-grp">
       <label class="f-lbl">Amount <span style="font-weight:400;color:var(--sub)">(0 = variable each month)</span></label>
-      <input id="b-amount" type="number" inputmode="decimal" class="f-ctrl" placeholder="12500">
+      <input id="b-amount" type="tel" inputmode="decimal" class="f-ctrl" placeholder="12500">
     </div>
     <div class="f-grp">
       <label class="f-lbl">Due Day Each Month</label>
@@ -517,7 +519,7 @@ select.f-ctrl{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.
 
 <script>
 // ── VERSION ───────────────────────────────────────────
-const APP_VERSION='v4.0';
+const APP_VERSION='v4.1';
 document.getElementById('ver-lbl').textContent=APP_VERSION;
 
 // ── CONSTANTS ─────────────────────────────────────────
@@ -578,8 +580,8 @@ function openIDB(){
     r.onerror=()=>res(null);
   });
 }
-async function idbSave(){
-  try{const db=await openIDB();if(!db)return;const tx=db.transaction('s','readwrite');tx.objectStore('s').put({k:'main',v:JSON.stringify(D),ts:Date.now()});}catch(e){}
+async function idbSave(serialized){
+  try{const db=await openIDB();if(!db)return;const tx=db.transaction('s','readwrite');tx.objectStore('s').put({k:'main',v:serialized||JSON.stringify(D),ts:Date.now()});}catch(e){}
 }
 async function idbLoad(){
   try{
@@ -596,8 +598,9 @@ async function idbLoad(){
 // ── AUTO-SAVE ─────────────────────────────────────────
 function save(){
   if(_saveFailedPermanently){toast('🚨 Storage full — export backup before adding data',6000);return;}
+  const serialized=JSON.stringify(D);
   try{
-    localStorage.setItem('ss_v3',JSON.stringify(D));
+    localStorage.setItem('ss_v3',serialized);
     localStorage.setItem('ss_ts',Date.now().toString());
     flashDot();
   }catch(e){
@@ -605,7 +608,7 @@ function save(){
     toast('🚨 Storage full — export a backup NOW! Data cannot be saved.',8000);
     return;
   }
-  idbSave();
+  idbSave(serialized);
   updateSaveLbl();
 }
 function flashDot(){
@@ -633,6 +636,7 @@ function fixD(){
   D.accounts=D.accounts.filter(a=>a&&typeof a.id==='string'&&/^[\w-]+$/.test(a.id)&&typeof a.name==='string');
   D.accounts.forEach(a=>{if(!a.type||!AT[a.type])a.type='other';if(!a.color||typeof a.color!=='string')a.color='#8E8E93';});
   if(!D.nextId)D.nextId=(D.expenses.reduce((m,e)=>Math.max(m,e.id||0),0)||0)+1;
+  _idSeq=Math.max(_idSeq,D.nextId);
   if(!D.lastReportKey)D.lastReportKey=null;
   if(!D.lastAutoExportKey)D.lastAutoExportKey=null;
   if(!Array.isArray(D.recurring))D.recurring=[];
@@ -957,7 +961,7 @@ function txnHtml(e,del=true){
     <div class="txn-ico" style="background:${c.color}20">${c.emoji}</div>
     <div class="txn-info">
       <div class="txn-acct">${esc(a?a.name:'Unknown')}</div>
-      <span class="txn-cat" style="background:${a?a.color:'#8E8E93'}">${c.name}</span>
+      <span class="txn-cat" style="background:${c.color}">${c.name}</span>
       ${e.comment?`<div class="txn-note">${esc(e.comment)}</div>`:''}
       <div class="txn-dt">${fmtDate(e.date)}</div>
     </div>
@@ -980,6 +984,7 @@ function resetAdd(){
   if(incBtn)incBtn.classList.remove('on');
   const rc=document.getElementById('add-recurring');if(rc)rc.checked=false;
   const sb=document.getElementById('add-submit-btn');if(sb)sb.textContent='Save Expense';
+  setTimeout(()=>{const el=document.getElementById('add-amount');if(el)el.focus();},350);
 }
 function populateDDs(){
   document.getElementById('add-acct').innerHTML=D.accounts.length===0
@@ -1008,8 +1013,9 @@ function submitExpense(){
   D.expenses.push({id:D.nextId++,accountId:acctId,amount:amt,category:cat,date,comment:note,type:addType});
   if(document.getElementById('add-recurring').checked){
     const _rn=new Date(),_rkey=`${_rn.getFullYear()}-${_rn.getMonth()}`;
-    D.recurring.push({id:genId('r'),accountId:acctId,amount:amt,category:cat,comment:note,type:addType,lastAdded:_rkey,dayOfMonth:parseInt(date.split('-')[2])||1});
+    D.recurring.push({id:genId('r'),accountId:acctId,amount:amt,category:cat,comment:note,type:addType,lastAdded:_rkey,dayOfMonth:parseInt(date.split('-')[2],10)||1});
   }
+  if(navigator.vibrate)navigator.vibrate(10);
   save();
   toast(`✅ ${getC(cat).emoji} Added: ${fmt(amt)}`);
   showTab('home');
@@ -1072,7 +1078,7 @@ function openReport(yr,mo,isAuto=false){
   document.getElementById('report-overlay').classList.add('on');
   document.getElementById('ro-body').scrollTop=0;
 }
-function closeReport(){document.getElementById('report-overlay').classList.remove('on');}
+function closeReport(){document.getElementById('report-overlay').classList.remove('on');_reportScheduled=false;}
 
 function buildReport(yr,mo,isAuto){
   const exps=moExp(yr,mo);
@@ -1187,7 +1193,7 @@ function renderSettings(){
     :`<div>${D.accounts.map(a=>{const t=AT[a.type]||AT.other;return`<div class="acct-row">
       <div class="acct-dot" style="background:${a.color}"></div>
       <div class="acct-info"><div class="acct-name">${t.emoji} ${esc(a.name)}</div><div class="acct-type">${t.label}</div></div>
-      <button class="del-btn" onclick="confirmDeleteAcct('${a.id}')">🗑️</button>
+      <button class="del-btn" onclick="confirmDeleteAcct('${esc(a.id)}')">🗑️</button>
     </div>`;}).join('')}</div>`;
   const s=document.getElementById('cur-sel');if(s)s.value=cur();
   const ts=parseInt(localStorage.getItem('ss_ts')||'0');
@@ -1221,6 +1227,7 @@ function saveAcct(){
   save();closeSheet('acct-sheet');renderSettings();populateDDs();toast('✅ Account added');
 }
 function confirmDeleteAcct(id){
+  if(D.accounts.length<=1){toast('⚠️ Keep at least one account');return;}
   const a=D.accounts.find(x=>x.id===id);if(!a)return;
   const n=D.expenses.filter(e=>e.accountId===id).length;
   confirmAction('Delete Account',`Delete "${a.name}"? Its ${n} transaction(s), related bills and recurring entries will also be removed.`,()=>{
@@ -1248,7 +1255,7 @@ function importBackup(event){
       ['__proto__','constructor','prototype'].forEach(k=>{delete imp[k];});
       if(!Array.isArray(imp.accounts)||!Array.isArray(imp.expenses))throw new Error('invalid');
       const prev=JSON.stringify(D);
-      D=imp;
+      D={accounts:imp.accounts,expenses:imp.expenses,currency:imp.currency||'₹',nextId:imp.nextId||1,lastReportKey:imp.lastReportKey||null,lastAutoExportKey:imp.lastAutoExportKey||null,recurring:imp.recurring||[],bills:imp.bills||[],budgets:imp.budgets||{}};
       try{fixD();}catch(fe){D=JSON.parse(prev);throw fe;}
       histFilter='all';save();renderHome();renderSettings();populateDDs();toast(`✅ Imported: ${D.expenses.length} expenses`);
     }catch(e){toast('❌ Invalid backup file');}
@@ -1290,6 +1297,7 @@ function saveEdit(){
   if(!date||date.length<8){toast('⚠️ Pick a valid date');return;}
   const idx=D.expenses.findIndex(x=>x.id===editingId);if(idx===-1)return;
   D.expenses[idx]={...D.expenses[idx],amount:amt,accountId:acctId,category:document.getElementById('edit-cat').value,date,comment:document.getElementById('edit-note').value.trim()};
+  if(navigator.vibrate)navigator.vibrate(10);
   save();closeSheet('edit-sheet');toast('✅ Entry updated');
   const t=document.querySelector('.tab.on').id.replace('tab-','');
   if(t==='home')renderHome();else if(t==='history')renderHistory();else if(t==='report')renderRptTab();
@@ -1361,8 +1369,9 @@ function markBillPaid(id){
   const dedupKey=`bill-${id}-${curKey}`;
   if(D.expenses.some(e=>e._dedupKey===dedupKey)){toast('Already marked paid this month');return;}
   b.paidMonths.push(curKey);
-  if(b.type==='emi')b.emiPaid=(b.emiPaid||0)+1;
+  if(b.type==='emi'){if((b.emiPaid||0)>=(b.emiTotal||1)){toast('EMI already fully paid');return;}b.emiPaid=(b.emiPaid||0)+1;}
   if(b.amount>0)D.expenses.push({id:D.nextId++,accountId:b.accountId,amount:b.amount,category:b.category||'bills',date:localDateStr(),comment:b.name,type:'expense',_dedupKey:dedupKey});
+  if(navigator.vibrate)navigator.vibrate(10);
   save();renderHome();
   toast(b.amount>0?`✅ ${b.name} paid — ${fmt(b.amount)} added`:`✅ ${b.name} marked paid`,3000);
   if(b.type==='emi'&&(b.emiPaid||0)>=(b.emiTotal||1))setTimeout(()=>toast(`🎉 ${b.name} fully paid off!`,4000),600);
@@ -1406,6 +1415,7 @@ function saveBill(){
     if(emiPaid<0||emiPaid>emiTotal){toast('⚠️ Paid count must be 0 – '+emiTotal);return;}
   }
   D.bills.push({id:genId('b'),name,type:billType,amount,dueDay,accountId,category,paidMonths:[],emiTotal,emiPaid});
+  if(navigator.vibrate)navigator.vibrate(10);
   save();closeSheet('bill-sheet');renderSettings();renderHome();toast('✅ Bill added');
 }
 function deleteBill(id){
@@ -1429,7 +1439,7 @@ function renderBills(){
         <div style="font-size:12px;color:var(--sub);margin-top:1px">${b.amount>0?fmt(b.amount)+' · ':'Variable · '}Due ${b.dueDay}${b.dueDay===1?'st':b.dueDay===2?'nd':b.dueDay===3?'rd':'th'} every month</div>
         ${isEmi?`<div style="margin-top:5px"><div style="font-size:11px;color:var(--sub);margin-bottom:3px">${emiPaid}/${b.emiTotal} EMIs${complete?' <span style="color:var(--green)">✅ Complete!</span>':''}</div><div style="height:3px;background:var(--bg);border-radius:2px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${urgCol};border-radius:2px"></div></div></div>`:''}
       </div>
-      <button class="del-btn" onclick="deleteBill('${b.id}')">🗑️</button>
+      <button class="del-btn" onclick="deleteBill('${esc(b.id)}')">🗑️</button>
     </div>`;
   }).join('')}</div>`;
 }
@@ -1448,7 +1458,7 @@ function checkRecurring(){
       const dom=r.dayOfMonth||now.getDate();
       const lastDayOfMo=new Date(yr,mo+1,0).getDate();
       const targetDate=localDateStr(new Date(yr,mo,Math.min(dom,lastDayOfMo)));
-      D.expenses.push({id:D.nextId++,accountId:r.accountId,amount:r.amount,category:r.category,date:targetDate,comment:r.comment,type:r.type||'expense'});
+      D.expenses.push({id:D.nextId++,accountId:r.accountId,amount:r.amount,category:r.category,date:targetDate,comment:r.comment,type:r.type||'expense',_dedupKey:'rec-'+r.id+'-'+key});
       added++;
     });
     if(added>0){save();renderHome();toast(`🔁 Added ${added} recurring expense${added>1?'s':''}`,3500);}
@@ -1461,7 +1471,7 @@ function renderRecurring(){
     :`<div>${D.recurring.map(r=>{const c=getC(r.category);return`<div class="rec-row">
       <div style="font-size:20px">${c.emoji}</div>
       <div style="flex:1"><div style="font-size:15px;font-weight:600">${fmt(r.amount)} · ${esc(c.name)}</div><div style="font-size:12px;color:var(--sub)">${esc(getA(r.accountId)?.name||'Unknown')} · ${r.type==='income'?'Income':'Expense'}</div></div>
-      <button class="del-btn" onclick="deleteRecurring('${r.id}')">🗑️</button>
+      <button class="del-btn" onclick="deleteRecurring('${esc(r.id)}')">🗑️</button>
     </div>`;}).join('')}</div>`;
 }
 function deleteRecurring(id){
@@ -1475,9 +1485,10 @@ function renderBudgets(){
   const el=document.getElementById('budgets-section');if(!el)return;
   const now=new Date(),yr=now.getFullYear(),mo=now.getMonth();
   const exps=moExp(yr,mo).filter(e=>e.type!=='income');
+  const catSpend={};exps.forEach(e=>{const k=e.category||'other';catSpend[k]=(catSpend[k]||0)+e.amount;});
   el.innerHTML=`<div class="card" style="padding:14px 14px 8px">
     ${CATS.map(c=>{
-      const spent=exps.filter(e=>e.category===c.id).reduce((s,e)=>s+e.amount,0);
+      const spent=catSpend[c.id]||0;
       const bdg=D.budgets&&D.budgets[c.id]?D.budgets[c.id]:0;
       const pct=bdg>0?Math.min(100,spent/bdg*100):0;
       const over=bdg>0&&spent>bdg;
